@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { URDFViewerElement } from "@/lib/urdfViewerHelpers";
+import { useApi } from "@/contexts/ApiContext";
 
 interface JointData {
   type: "joint_update";
@@ -16,8 +17,11 @@ interface UseRealTimeJointsProps {
 export const useRealTimeJoints = ({
   viewerRef,
   enabled = true,
-  websocketUrl = "ws://localhost:8000/ws/joint-data",
+  websocketUrl,
 }: UseRealTimeJointsProps) => {
+  const { baseUrl, wsBaseUrl, fetchWithHeaders } = useApi();
+  const defaultWebSocketUrl = `${wsBaseUrl}/ws/joint-data`;
+  const finalWebSocketUrl = websocketUrl || defaultWebSocketUrl;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectedRef = useRef<boolean>(false);
@@ -47,7 +51,7 @@ export const useRealTimeJoints = ({
     // First, test if the server is running
     const testServerConnection = async () => {
       try {
-        const response = await fetch("http://localhost:8000/health");
+        const response = await fetchWithHeaders(`${baseUrl}/health`);
         if (!response.ok) {
           console.error("❌ Server health check failed:", response.status);
           return false;
@@ -72,9 +76,9 @@ export const useRealTimeJoints = ({
       }
 
       try {
-        console.log("🔗 Connecting to WebSocket:", websocketUrl);
+        console.log("🔗 Connecting to WebSocket:", finalWebSocketUrl);
 
-        const ws = new WebSocket(websocketUrl);
+        const ws = new WebSocket(finalWebSocketUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {

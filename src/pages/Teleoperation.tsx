@@ -2,16 +2,18 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import VisualizerPanel from "@/components/control/VisualizerPanel";
 import { useToast } from "@/hooks/use-toast";
+import { useApi } from "@/contexts/ApiContext";
 
 const TeleoperationPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { baseUrl, fetchWithHeaders } = useApi();
 
   const handleGoBack = async () => {
     try {
       // Stop the teleoperation process before navigating back
       console.log("🛑 Stopping teleoperation...");
-      const response = await fetch("http://localhost:8000/stop-teleoperation", {
+      const response = await fetchWithHeaders(`${baseUrl}/stop-teleoperation`, {
         method: "POST",
       });
 

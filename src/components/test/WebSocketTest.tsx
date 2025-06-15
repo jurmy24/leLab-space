@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { useApi } from "@/contexts/ApiContext";
 
 interface JointData {
   type: "joint_update";
@@ -8,6 +9,7 @@ interface JointData {
 }
 
 const WebSocketTest: React.FC = () => {
+  const { baseUrl, wsBaseUrl, fetchWithHeaders } = useApi();
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<JointData | null>(null);
   const [connectionStatus, setConnectionStatus] =
@@ -16,13 +18,13 @@ const WebSocketTest: React.FC = () => {
 
   const connect = () => {
     // First test server health
-    fetch("http://localhost:8000/health")
+    fetchWithHeaders(`${baseUrl}/health`)
       .then((response) => response.json())
       .then((data) => {
         console.log("Server health:", data);
 
         // Now try WebSocket connection
-        const websocket = new WebSocket("ws://localhost:8000/ws/joint-data");
+        const websocket = new WebSocket(`${wsBaseUrl}/ws/joint-data`);
 
         websocket.onopen = () => {
           console.log("WebSocket connected");
@@ -120,7 +122,7 @@ const WebSocketTest: React.FC = () => {
         )}
 
         <div className="text-sm text-gray-400">
-          <div>Expected URL: ws://localhost:8000/ws/joint-data</div>
+          <div>Expected URL: {wsBaseUrl}/ws/joint-data</div>
           <div>Make sure your FastAPI server is running!</div>
         </div>
       </div>

@@ -30,6 +30,9 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Logo from "@/components/Logo";
+import PortDetectionButton from "@/components/ui/PortDetectionButton";
+import PortDetectionModal from "@/components/ui/PortDetectionModal";
+import { useApi } from "@/contexts/ApiContext";
 
 interface CalibrationStatus {
   calibration_active: boolean;
@@ -58,6 +61,7 @@ interface CalibrationConfig {
 const Calibration = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { baseUrl, fetchWithHeaders } = useApi();
 
   // Ref for auto-scrolling console
   const consoleRef = useRef<HTMLDivElement>(null);
@@ -72,6 +76,12 @@ const Calibration = () => {
   const [availableConfigs, setAvailableConfigs] = useState<CalibrationConfig[]>(
     []
   );
+
+  // Port detection state
+  const [showPortDetection, setShowPortDetection] = useState(false);
+  const [detectionRobotType, setDetectionRobotType] = useState<
+    "leader" | "follower"
+  >("leader");
 
   // Calibration state
   const [calibrationStatus, setCalibrationStatus] = useState<CalibrationStatus>(
@@ -91,7 +101,7 @@ const Calibration = () => {
   // Poll calibration status
   const pollStatus = async () => {
     try {
-      const response = await fetch("http://localhost:8000/calibration-status");
+      const response = await fetchWithHeaders(`${baseUrl}/calibration-status`);
       if (response.ok) {
         const status = await response.json();
         setCalibrationStatus(status);
@@ -127,11 +137,8 @@ const Calibration = () => {
     };
 
     try {
-      const response = await fetch("http://localhost:8000/start-calibration", {
+      const response = await fetchWithHeaders(`${baseUrl}/start-calibration`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(request),
       });
 
@@ -163,7 +170,7 @@ const Calibration = () => {
   // Stop calibration
   const handleStopCalibration = async () => {
     try {
-      const response = await fetch("http://localhost:8000/stop-calibration", {
+      const response = await fetchWithHeaders(`${baseUrl}/stop-calibration`, {
         method: "POST",
       });
 
@@ -215,8 +222,8 @@ const Calibration = () => {
 
     setIsLoadingConfigs(true);
     try {
-      const response = await fetch(
-        `http://localhost:8000/calibration-configs/${deviceType}`
+      const response = await fetchWithHeaders(
+        `${baseUrl}/calibration-configs/${deviceType}`
       );
       const data = await response.json();
 
@@ -245,8 +252,8 @@ const Calibration = () => {
     if (!deviceType) return;
 
     try {
-      const response = await fetch(
-        `http://localhost:8000/calibration-configs/${deviceType}/${configName}`,
+      const response = await fetchWithHeaders(
+        `${baseUrl}/calibration-configs/${deviceType}/${configName}`,
         { method: "DELETE" }
       );
       const data = await response.json();
@@ -281,11 +288,8 @@ const Calibration = () => {
     console.log("🔵 Enter button clicked - sending input...");
 
     try {
-      const response = await fetch("http://localhost:8000/calibration-input", {
+      const response = await fetchWithHeaders(`${baseUrl}/calibration-input`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({ input: "\n" }), // Send actual newline character
       });
 
@@ -355,6 +359,43 @@ const Calibration = () => {
       return () => clearTimeout(timeoutId);
     }
   }, [calibrationStatus.console_output]);
+
+  // Load default port when device type changes
+  useEffect(() => {
+    const loadDefaultPort = async () => {
+      if (!deviceType) return;
+
+      try {
+        const robotType = deviceType === "robot" ? "follower" : "leader";
+        const response = await fetchWithHeaders(
+          `${baseUrl}/robot-port/${robotType}`
+        );
+        const data = await response.json();
+        if (data.status === "success") {
+          // Use saved port if available, otherwise use default port
+          const portToUse = data.saved_port || data.default_port;
+          if (portToUse) {
+            setPort(portToUse);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading default port:", error);
+      }
+    };
+
+    loadDefaultPort();
+  }, [deviceType]);
+
+  // Handle port detection
+  const handlePortDetection = () => {
+    const robotType = deviceType === "robot" ? "follower" : "leader";
+    setDetectionRobotType(robotType);
+    setShowPortDetection(true);
+  };
+
+  const handlePortDetected = (detectedPort: string) => {
+    setPort(detectedPort);
+  };
 
   // Get status color and icon
   const getStatusDisplay = () => {
@@ -455,16 +496,10 @@ const Calibration = () => {
                     <SelectValue placeholder="Select device type" />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                    <SelectItem
-                      value="robot"
-                      className="hover:bg-slate-700"
-                    >
+                    <SelectItem value="robot" className="hover:bg-slate-700">
                       Robot (Follower)
                     </SelectItem>
-                    <SelectItem
-                      value="teleop"
-                      className="hover:bg-slate-700"
-                    >
+                    <SelectItem value="teleop" className="hover:bg-slate-700">
                       Teleoperator (Leader)
                     </SelectItem>
                   </SelectContent>
@@ -479,13 +514,20 @@ const Calibration = () => {
                 >
                   Port *
                 </Label>
-                <Input
-                  id="port"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  placeholder="/dev/tty.usbmodem..."
-                  className="bg-slate-700 border-slate-600 text-white rounded-md"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="port"
+                    value={port}
+                    onChange={(e) => setPort(e.target.value)}
+                    placeholder="/dev/tty.usbmodem..."
+                    className="bg-slate-700 border-slate-600 text-white rounded-md flex-1"
+                  />
+                  <PortDetectionButton
+                    onClick={handlePortDetection}
+                    robotType={deviceType === "robot" ? "follower" : "leader"}
+                    className="border-slate-600 hover:border-blue-500 text-slate-400 hover:text-blue-400 bg-slate-700 hover:bg-slate-600"
+                  />
+                </div>
               </div>
 
               {/* Config File Name */}
@@ -728,6 +770,13 @@ const Calibration = () => {
           </Card>
         </div>
       </div>
+
+      <PortDetectionModal
+        open={showPortDetection}
+        onOpenChange={setShowPortDetection}
+        robotType={detectionRobotType}
+        onPortDetected={handlePortDetected}
+      />
     </div>
   );
 };

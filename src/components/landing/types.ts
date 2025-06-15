@@ -4,4 +4,5 @@ export interface Action {
   description: string;
   handler: () => void;
   color: string;
+  isWorkInProgress?: boolean;
 }

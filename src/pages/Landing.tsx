@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -9,12 +8,18 @@ import ActionList from "@/components/landing/ActionList";
 import PermissionModal from "@/components/landing/PermissionModal";
 import TeleoperationModal from "@/components/landing/TeleoperationModal";
 import RecordingModal from "@/components/landing/RecordingModal";
+import NgrokConfigModal from "@/components/landing/NgrokConfigModal";
 import { Action } from "@/components/landing/types";
+import UsageInstructionsModal from "@/components/landing/UsageInstructionsModal";
+import DirectFollowerModal from "@/components/landing/DirectFollowerModal";
+import { useApi } from "@/contexts/ApiContext";
 
 const Landing = () => {
-  const [robotModel, setRobotModel] = useState("");
+  const [robotModel, setRobotModel] = useState("SO101");
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [showTeleoperationModal, setShowTeleoperationModal] = useState(false);
+  const [showUsageModal, setShowUsageModal] = useState(false);
+  const [showNgrokModal, setShowNgrokModal] = useState(false);
   const [leaderPort, setLeaderPort] = useState("/dev/tty.usbmodem5A460816421");
   const [followerPort, setFollowerPort] = useState(
     "/dev/tty.usbmodem5A460816621"
@@ -24,6 +29,7 @@ const Landing = () => {
   const [leaderConfigs, setLeaderConfigs] = useState<string[]>([]);
   const [followerConfigs, setFollowerConfigs] = useState<string[]>([]);
   const [isLoadingConfigs, setIsLoadingConfigs] = useState(false);
+  const { baseUrl, fetchWithHeaders } = useApi();
 
   // Recording state
   const [showRecordingModal, setShowRecordingModal] = useState(false);
@@ -39,13 +45,20 @@ const Landing = () => {
   const [singleTask, setSingleTask] = useState("");
   const [numEpisodes, setNumEpisodes] = useState(5);
 
+  // Direct follower control state
+  const [showDirectFollowerModal, setShowDirectFollowerModal] = useState(false);
+  const [directFollowerPort, setDirectFollowerPort] = useState(
+    "/dev/tty.usbmodem5A460816621"
+  );
+  const [directFollowerConfig, setDirectFollowerConfig] = useState("");
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const loadConfigs = async () => {
     setIsLoadingConfigs(true);
     try {
-      const response = await fetch("http://localhost:8000/get-configs");
+      const response = await fetchWithHeaders(`${baseUrl}/get-configs`);
       const data = await response.json();
       setLeaderConfigs(data.leader_configs || []);
       setFollowerConfigs(data.follower_configs || []);
@@ -73,16 +86,16 @@ const Landing = () => {
     }
   };
 
+  const handleCalibrationClick = () => {
+    if (robotModel) {
+      navigate("/calibration");
+    }
+  };
+
   const handleRecordingClick = () => {
     if (robotModel) {
       setShowRecordingModal(true);
       loadConfigs();
-    }
-  };
-
-  const handleEditDatasetClick = () => {
-    if (robotModel) {
-      navigate("/edit-dataset");
     }
   };
 
@@ -94,7 +107,14 @@ const Landing = () => {
 
   const handleReplayDatasetClick = () => {
     if (robotModel) {
-      navigate("/edit-dataset");
+      navigate("/replay-dataset");
+    }
+  };
+
+  const handleDirectFollowerClick = () => {
+    if (robotModel) {
+      setShowDirectFollowerModal(true);
+      loadConfigs();
     }
   };
 
@@ -110,11 +130,8 @@ const Landing = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/move-arm", {
+      const response = await fetchWithHeaders(`${baseUrl}/move-arm`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           leader_port: leaderPort,
           follower_port: followerPort,
@@ -185,6 +202,55 @@ const Landing = () => {
     navigate("/recording", { state: { recordingConfig } });
   };
 
+  const handleStartDirectFollower = async () => {
+    if (!directFollowerConfig) {
+      toast({
+        title: "Missing Configuration",
+        description: "Please select a calibration config for the follower.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch("http://localhost:8000/direct-follower", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          follower_port: directFollowerPort,
+          follower_config: directFollowerConfig,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Direct Follower Control Started",
+          description:
+            data.message || "Successfully started direct follower control.",
+        });
+        setShowDirectFollowerModal(false);
+        navigate("/direct-follower");
+      } else {
+        toast({
+          title: "Error Starting Direct Follower Control",
+          description:
+            data.message || "Failed to start direct follower control.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Connection Error",
+        description: "Could not connect to the backend server.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handlePermissions = async (allow: boolean) => {
     setShowPermissionModal(false);
     if (allow) {
@@ -220,16 +286,23 @@ const Landing = () => {
 
   const actions: Action[] = [
     {
-      title: "Begin Session",
-      description: "Start a new control session.",
-      handler: handleBeginSession,
-      color: "bg-orange-500 hover:bg-orange-600",
-    },
-    {
       title: "Teleoperation",
       description: "Control the robot arm in real-time.",
       handler: handleTeleoperationClick,
       color: "bg-yellow-500 hover:bg-yellow-600",
+    },
+    {
+      title: "Direct Follower Control",
+      description: "Train a model on your datasets.",
+      handler: handleDirectFollowerClick,
+      color: "bg-blue-500 hover:bg-blue-600",
+    },
+    {
+      title: "Calibration",
+      description: "Calibrate robot arm positions.",
+      handler: handleCalibrationClick,
+      color: "bg-indigo-500 hover:bg-indigo-600",
+      isWorkInProgress: true,
     },
     {
       title: "Record Dataset",
@@ -238,30 +311,31 @@ const Landing = () => {
       color: "bg-red-500 hover:bg-red-600",
     },
     {
-      title: "Edit Dataset",
-      description: "Review and modify recorded datasets.",
-      handler: handleEditDatasetClick,
-      color: "bg-blue-500 hover:bg-blue-600",
-    },
-    {
       title: "Training",
       description: "Train a model on your datasets.",
       handler: handleTrainingClick,
       color: "bg-green-500 hover:bg-green-600",
+      isWorkInProgress: true,
     },
     {
       title: "Replay Dataset",
       description: "Replay and analyze recorded datasets.",
       handler: handleReplayDatasetClick,
       color: "bg-purple-500 hover:bg-purple-600",
+      isWorkInProgress: true,
     },
   ];
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center p-4 pt-12 sm:pt-20">
-      <LandingHeader />
+      <div className="w-full max-w-7xl mx-auto px-4 mb-12">
+        <LandingHeader
+          onShowInstructions={() => setShowUsageModal(true)}
+          onShowNgrokConfig={() => setShowNgrokModal(true)}
+        />
+      </div>
 
-      <div className="mt-12 p-8 bg-gray-900 rounded-lg shadow-xl w-full max-w-lg space-y-6 border border-gray-700">
+      <div className="p-8 bg-gray-900 rounded-lg shadow-xl w-full max-w-4xl space-y-6 border border-gray-700">
         <RobotModelSelector
           robotModel={robotModel}
           onValueChange={setRobotModel}
@@ -273,6 +347,11 @@ const Landing = () => {
         open={showPermissionModal}
         onOpenChange={setShowPermissionModal}
         onPermissionsResult={handlePermissions}
+      />
+
+      <UsageInstructionsModal
+        open={showUsageModal}
+        onOpenChange={setShowUsageModal}
       />
 
       <TeleoperationModal
@@ -313,6 +392,22 @@ const Landing = () => {
         setNumEpisodes={setNumEpisodes}
         isLoadingConfigs={isLoadingConfigs}
         onStart={handleStartRecording}
+      />
+
+      <DirectFollowerModal
+        open={showDirectFollowerModal}
+        onOpenChange={setShowDirectFollowerModal}
+        followerPort={directFollowerPort}
+        setFollowerPort={setDirectFollowerPort}
+        followerConfig={directFollowerConfig}
+        setFollowerConfig={setDirectFollowerConfig}
+        followerConfigs={followerConfigs}
+        isLoadingConfigs={isLoadingConfigs}
+        onStart={handleStartDirectFollower}
+      />
+      <NgrokConfigModal
+        open={showNgrokModal}
+        onOpenChange={setShowNgrokModal}
       />
     </div>
   );

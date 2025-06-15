@@ -66,26 +66,8 @@ export function createUrdfViewer(
   directionalLight.castShadow = true;
   viewer.scene.add(directionalLight);
 
-  // Set initial camera position for more zoomed-in view
-  // Wait for the viewer to be fully initialized before adjusting camera
-  setTimeout(() => {
-    if (viewer.camera) {
-      // Move camera closer to the robot for a more zoomed-in initial view
-      viewer.camera.position.set(0.5, 0.3, 0.5);
-      viewer.camera.lookAt(0, 0.2, 0); // Look at center of robot
-
-      // Update controls target if available
-      if (viewer.controls) {
-        viewer.controls.target.set(0, 0.2, 0);
-        viewer.controls.update();
-      }
-
-      // Trigger a redraw
-      if (viewer.redraw) {
-        viewer.redraw();
-      }
-    }
-  }, 100);
+  // Camera position is no longer adjusted automatically to prevent auto-zooming.
+  // The user can control the view with the mouse.
 
   return viewer;
 }
@@ -172,27 +154,6 @@ export function setupModelLoading(
   viewer.setAttribute("urdf", loadPath);
   viewer.setAttribute("package", packagePath);
 
-  // Handle successful loading and set initial zoom
-  const onLoadSuccess = () => {
-    // Set more zoomed-in camera position after model loads
-    setTimeout(() => {
-      if (viewer.camera && viewer.robot) {
-        // Position camera closer for better initial view
-        viewer.camera.position.set(0.4, 0.25, 0.4);
-        viewer.camera.lookAt(0, 0.15, 0);
-
-        if (viewer.controls) {
-          viewer.controls.target.set(0, 0.15, 0);
-          viewer.controls.update();
-        }
-
-        if (viewer.redraw) {
-          viewer.redraw();
-        }
-      }
-    }, 50);
-  };
-
   // Handle error loading
   const onLoadError = () => {
     // toast.error("Failed to load model", {
@@ -216,12 +177,11 @@ export function setupModelLoading(
   };
 
   viewer.addEventListener("error", onLoadError);
-  viewer.addEventListener("urdf-processed", onLoadSuccess);
+  // The 'urdf-processed' event that handled auto-zooming has been removed.
 
   // Return cleanup function
   return () => {
     viewer.removeEventListener("error", onLoadError);
-    viewer.removeEventListener("urdf-processed", onLoadSuccess);
   };
 }
 
