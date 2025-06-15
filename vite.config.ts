@@ -36,6 +36,9 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
+  preview: {
+    allowedHosts: ["jurmy24-lelab.hf.space"],
+  },
   plugins: [react(), mode === "development" && componentTagger()].filter(
     Boolean
   ),
