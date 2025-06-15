@@ -1,25 +1,15 @@
-import React, { useState, useEffect } from "react";
+
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Camera, Mic, Settings, Wrench, GraduationCap } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import LandingHeader from "@/components/landing/LandingHeader";
+import RobotModelSelector from "@/components/landing/RobotModelSelector";
+import ActionList from "@/components/landing/ActionList";
+import PermissionModal from "@/components/landing/PermissionModal";
+import TeleoperationModal from "@/components/landing/TeleoperationModal";
+import RecordingModal from "@/components/landing/RecordingModal";
+import { Action } from "@/components/landing/types";
 
 const Landing = () => {
   const [robotModel, setRobotModel] = useState("");
@@ -90,15 +80,21 @@ const Landing = () => {
     }
   };
 
-  const handleCalibrationClick = () => {
+  const handleEditDatasetClick = () => {
     if (robotModel) {
-      navigate("/calibration");
+      navigate("/edit-dataset");
     }
   };
 
   const handleTrainingClick = () => {
     if (robotModel) {
       navigate("/training");
+    }
+  };
+
+  const handleReplayDatasetClick = () => {
+    if (robotModel) {
+      navigate("/edit-dataset");
     }
   };
 
@@ -169,7 +165,6 @@ const Landing = () => {
       return;
     }
 
-    // Navigate to recording page with configuration
     const recordingConfig = {
       leader_port: recordLeaderPort,
       follower_port: recordFollowerPort,
@@ -178,8 +173,8 @@ const Landing = () => {
       dataset_repo_id: datasetRepoId,
       single_task: singleTask,
       num_episodes: numEpisodes,
-      episode_time_s: 60, // Default 60 seconds - use manual controls to end episodes early
-      reset_time_s: 15, // Default 15 seconds - use manual controls for faster resets
+      episode_time_s: 60,
+      reset_time_s: 15,
       fps: 30,
       video: true,
       push_to_hub: false,
@@ -223,477 +218,102 @@ const Landing = () => {
     }
   };
 
+  const actions: Action[] = [
+    {
+      title: "Begin Session",
+      description: "Start a new control session.",
+      handler: handleBeginSession,
+      color: "bg-orange-500 hover:bg-orange-600",
+    },
+    {
+      title: "Teleoperation",
+      description: "Control the robot arm in real-time.",
+      handler: handleTeleoperationClick,
+      color: "bg-yellow-500 hover:bg-yellow-600",
+    },
+    {
+      title: "Record Dataset",
+      description: "Record episodes for training data.",
+      handler: handleRecordingClick,
+      color: "bg-red-500 hover:bg-red-600",
+    },
+    {
+      title: "Edit Dataset",
+      description: "Review and modify recorded datasets.",
+      handler: handleEditDatasetClick,
+      color: "bg-blue-500 hover:bg-blue-600",
+    },
+    {
+      title: "Training",
+      description: "Train a model on your datasets.",
+      handler: handleTrainingClick,
+      color: "bg-green-500 hover:bg-green-600",
+    },
+    {
+      title: "Replay Dataset",
+      description: "Replay and analyze recorded datasets.",
+      handler: handleReplayDatasetClick,
+      color: "bg-purple-500 hover:bg-purple-600",
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
-      <div className="text-center space-y-4 max-w-lg w-full">
-        <img
-          src="/lovable-uploads/5e648747-34b7-4d8f-93fd-4dbd00aeeefc.png"
-          alt="LiveLab Logo"
-          className="mx-auto h-20 w-20"
-        />
-        <h1 className="text-5xl font-bold tracking-tight">LiveLab</h1>
-        <p className="text-xl text-gray-400">
-          Control a robotic arm through telepresence. Your browser becomes both
-          sensor and controller.
-        </p>
-      </div>
+    <div className="min-h-screen bg-black text-white flex flex-col items-center p-4 pt-12 sm:pt-20">
+      <LandingHeader />
 
       <div className="mt-12 p-8 bg-gray-900 rounded-lg shadow-xl w-full max-w-lg space-y-6 border border-gray-700">
-        <h2 className="text-2xl font-semibold text-center text-white">
-          Select Robot Model
-        </h2>
-        <RadioGroup
-          value={robotModel}
+        <RobotModelSelector
+          robotModel={robotModel}
           onValueChange={setRobotModel}
-          className="space-y-4"
-        >
-          <div>
-            <RadioGroupItem value="SO100" id="so100" className="sr-only" />
-            <Label
-              htmlFor="so100"
-              className="flex items-center space-x-4 p-4 rounded-md bg-gray-800 border border-gray-700 cursor-pointer transition-all has-[:checked]:border-orange-500 has-[:checked]:bg-gray-800/50"
-            >
-              <span className="w-6 h-6 rounded-full border-2 border-gray-500 flex items-center justify-center group-has-[:checked]:border-orange-500">
-                {robotModel === "SO100" && (
-                  <span className="w-3 h-3 rounded-full bg-orange-500" />
-                )}
-              </span>
-              <span className="text-lg flex-1">SO100</span>
-            </Label>
-          </div>
-          <div>
-            <RadioGroupItem value="SO101" id="so101" className="sr-only" />
-            <Label
-              htmlFor="so101"
-              className="flex items-center space-x-4 p-4 rounded-md bg-gray-800 border border-gray-700 cursor-pointer transition-all has-[:checked]:border-orange-500 has-[:checked]:bg-gray-800/50"
-            >
-              <span className="w-6 h-6 rounded-full border-2 border-gray-500 flex items-center justify-center group-has-[:checked]:border-orange-500">
-                {robotModel === "SO101" && (
-                  <span className="w-3 h-3 rounded-full bg-orange-500" />
-                )}
-              </span>
-              <span className="text-lg flex-1">SO101</span>
-            </Label>
-          </div>
-        </RadioGroup>
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Button
-            onClick={handleBeginSession}
-            disabled={!robotModel}
-            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-lg py-6 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
-          >
-            Begin Session
-          </Button>
-          <Button
-            onClick={handleCalibrationClick}
-            disabled={!robotModel}
-            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-lg py-6 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
-          >
-            <Wrench className="w-5 h-5 mr-2" />
-            Calibration
-          </Button>
-          <Button
-            onClick={handleTeleoperationClick}
-            disabled={!robotModel}
-            className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white text-lg py-6 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
-          >
-            Teleoperation
-          </Button>
-          <Button
-            onClick={handleRecordingClick}
-            disabled={!robotModel}
-            className="flex-1 bg-red-500 hover:bg-red-600 text-white text-lg py-6 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
-          >
-            Recording
-          </Button>
-          <Button
-            onClick={handleTrainingClick}
-            disabled={!robotModel}
-            className="flex-1 bg-purple-500 hover:bg-purple-600 text-white text-lg py-6 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
-          >
-            <GraduationCap className="w-5 h-5 mr-2" />
-            Training
-          </Button>
-        </div>
+        />
+        <ActionList actions={actions} robotModel={robotModel} />
       </div>
 
-      {/* Permission Modal */}
-      <Dialog open={showPermissionModal} onOpenChange={setShowPermissionModal}>
-        <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[480px] p-8">
-          <DialogHeader>
-            <div className="flex justify-center items-center gap-4 mb-4">
-              <Camera className="w-8 h-8 text-orange-500" />
-              <Mic className="w-8 h-8 text-orange-500" />
-            </div>
-            <DialogTitle className="text-white text-center text-2xl font-bold">
-              Enable Camera & Microphone
-            </DialogTitle>
-          </DialogHeader>
-          <div className="text-center space-y-6 py-4">
-            <DialogDescription className="text-gray-400 text-base leading-relaxed">
-              LiveLab requires access to your camera and microphone for a fully
-              immersive telepresence experience. This enables real-time video
-              feedback and voice command capabilities.
-            </DialogDescription>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
-              <Button
-                onClick={() => handlePermissions(true)}
-                className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white px-10 py-6 text-lg transition-all shadow-md shadow-orange-500/30 hover:shadow-lg hover:shadow-orange-500/40"
-              >
-                Allow Access
-              </Button>
-              <Button
-                onClick={() => handlePermissions(false)}
-                variant="outline"
-                className="w-full sm:w-auto border-gray-500 hover:border-gray-200 px-10 py-6 text-lg text-zinc-500 bg-zinc-900 hover:bg-zinc-800"
-              >
-                Continue without
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PermissionModal
+        open={showPermissionModal}
+        onOpenChange={setShowPermissionModal}
+        onPermissionsResult={handlePermissions}
+      />
 
-      {/* Teleoperation Configuration Modal */}
-      <Dialog
+      <TeleoperationModal
         open={showTeleoperationModal}
         onOpenChange={setShowTeleoperationModal}
-      >
-        <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[600px] p-8">
-          <DialogHeader>
-            <div className="flex justify-center items-center gap-4 mb-4">
-              <Settings className="w-8 h-8 text-yellow-500" />
-            </div>
-            <DialogTitle className="text-white text-center text-2xl font-bold">
-              Configure Teleoperation
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            <DialogDescription className="text-gray-400 text-base leading-relaxed text-center">
-              Configure the robot arm ports and calibration settings for
-              teleoperation.
-            </DialogDescription>
+        leaderPort={leaderPort}
+        setLeaderPort={setLeaderPort}
+        followerPort={followerPort}
+        setFollowerPort={setFollowerPort}
+        leaderConfig={leaderConfig}
+        setLeaderConfig={setLeaderConfig}
+        followerConfig={followerConfig}
+        setFollowerConfig={setFollowerConfig}
+        leaderConfigs={leaderConfigs}
+        followerConfigs={followerConfigs}
+        isLoadingConfigs={isLoadingConfigs}
+        onStart={handleStartTeleoperation}
+      />
 
-            <div className="grid grid-cols-1 gap-6">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="leaderPort"
-                  className="text-sm font-medium text-gray-300"
-                >
-                  Leader Port
-                </Label>
-                <Input
-                  id="leaderPort"
-                  value={leaderPort}
-                  onChange={(e) => setLeaderPort(e.target.value)}
-                  placeholder="/dev/tty.usbmodem5A460816421"
-                  className="bg-gray-800 border-gray-700 text-white"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label
-                  htmlFor="leaderConfig"
-                  className="text-sm font-medium text-gray-300"
-                >
-                  Leader Calibration Config
-                </Label>
-                <Select value={leaderConfig} onValueChange={setLeaderConfig}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                    <SelectValue
-                      placeholder={
-                        isLoadingConfigs
-                          ? "Loading configs..."
-                          : "Select leader config"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700">
-                    {leaderConfigs.map((config) => (
-                      <SelectItem
-                        key={config}
-                        value={config}
-                        className="text-white hover:bg-gray-700"
-                      >
-                        {config}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label
-                  htmlFor="followerPort"
-                  className="text-sm font-medium text-gray-300"
-                >
-                  Follower Port
-                </Label>
-                <Input
-                  id="followerPort"
-                  value={followerPort}
-                  onChange={(e) => setFollowerPort(e.target.value)}
-                  placeholder="/dev/tty.usbmodem5A460816621"
-                  className="bg-gray-800 border-gray-700 text-white"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label
-                  htmlFor="followerConfig"
-                  className="text-sm font-medium text-gray-300"
-                >
-                  Follower Calibration Config
-                </Label>
-                <Select
-                  value={followerConfig}
-                  onValueChange={setFollowerConfig}
-                >
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                    <SelectValue
-                      placeholder={
-                        isLoadingConfigs
-                          ? "Loading configs..."
-                          : "Select follower config"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700">
-                    {followerConfigs.map((config) => (
-                      <SelectItem
-                        key={config}
-                        value={config}
-                        className="text-white hover:bg-gray-700"
-                      >
-                        {config}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-              <Button
-                onClick={handleStartTeleoperation}
-                className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-600 text-white px-10 py-6 text-lg transition-all shadow-md shadow-yellow-500/30 hover:shadow-lg hover:shadow-yellow-500/40"
-                disabled={isLoadingConfigs}
-              >
-                Start Teleoperation
-              </Button>
-              <Button
-                onClick={() => setShowTeleoperationModal(false)}
-                variant="outline"
-                className="w-full sm:w-auto border-gray-500 hover:border-gray-200 px-10 py-6 text-lg text-zinc-500 bg-zinc-900 hover:bg-zinc-800"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Recording Configuration Modal */}
-      <Dialog open={showRecordingModal} onOpenChange={setShowRecordingModal}>
-        <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[600px] p-8 max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="flex justify-center items-center gap-4 mb-4">
-              <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-sm">REC</span>
-              </div>
-            </div>
-            <DialogTitle className="text-white text-center text-2xl font-bold">
-              Configure Recording
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            <DialogDescription className="text-gray-400 text-base leading-relaxed text-center">
-              Configure the robot arm settings and dataset parameters for
-              recording.
-            </DialogDescription>
-
-            <div className="grid grid-cols-1 gap-6">
-              {/* Robot Configuration */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white border-b border-gray-700 pb-2">
-                  Robot Configuration
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="recordLeaderPort"
-                      className="text-sm font-medium text-gray-300"
-                    >
-                      Leader Port
-                    </Label>
-                    <Input
-                      id="recordLeaderPort"
-                      value={recordLeaderPort}
-                      onChange={(e) => setRecordLeaderPort(e.target.value)}
-                      placeholder="/dev/tty.usbmodem5A460816421"
-                      className="bg-gray-800 border-gray-700 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="recordLeaderConfig"
-                      className="text-sm font-medium text-gray-300"
-                    >
-                      Leader Calibration Config
-                    </Label>
-                    <Select
-                      value={recordLeaderConfig}
-                      onValueChange={setRecordLeaderConfig}
-                    >
-                      <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                        <SelectValue
-                          placeholder={
-                            isLoadingConfigs
-                              ? "Loading configs..."
-                              : "Select leader config"
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent className="bg-gray-800 border-gray-700">
-                        {leaderConfigs.map((config) => (
-                          <SelectItem
-                            key={config}
-                            value={config}
-                            className="text-white hover:bg-gray-700"
-                          >
-                            {config}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="recordFollowerPort"
-                      className="text-sm font-medium text-gray-300"
-                    >
-                      Follower Port
-                    </Label>
-                    <Input
-                      id="recordFollowerPort"
-                      value={recordFollowerPort}
-                      onChange={(e) => setRecordFollowerPort(e.target.value)}
-                      placeholder="/dev/tty.usbmodem5A460816621"
-                      className="bg-gray-800 border-gray-700 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="recordFollowerConfig"
-                      className="text-sm font-medium text-gray-300"
-                    >
-                      Follower Calibration Config
-                    </Label>
-                    <Select
-                      value={recordFollowerConfig}
-                      onValueChange={setRecordFollowerConfig}
-                    >
-                      <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                        <SelectValue
-                          placeholder={
-                            isLoadingConfigs
-                              ? "Loading configs..."
-                              : "Select follower config"
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent className="bg-gray-800 border-gray-700">
-                        {followerConfigs.map((config) => (
-                          <SelectItem
-                            key={config}
-                            value={config}
-                            className="text-white hover:bg-gray-700"
-                          >
-                            {config}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Dataset Configuration */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white border-b border-gray-700 pb-2">
-                  Dataset Configuration
-                </h3>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="datasetRepoId"
-                      className="text-sm font-medium text-gray-300"
-                    >
-                      Dataset Repository ID *
-                    </Label>
-                    <Input
-                      id="datasetRepoId"
-                      value={datasetRepoId}
-                      onChange={(e) => setDatasetRepoId(e.target.value)}
-                      placeholder="username/dataset_name"
-                      className="bg-gray-800 border-gray-700 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="singleTask"
-                      className="text-sm font-medium text-gray-300"
-                    >
-                      Task Name *
-                    </Label>
-                    <Input
-                      id="singleTask"
-                      value={singleTask}
-                      onChange={(e) => setSingleTask(e.target.value)}
-                      placeholder="e.g., pick_and_place"
-                      className="bg-gray-800 border-gray-700 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="numEpisodes"
-                      className="text-sm font-medium text-gray-300"
-                    >
-                      Number of Episodes
-                    </Label>
-                    <Input
-                      id="numEpisodes"
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={numEpisodes}
-                      onChange={(e) => setNumEpisodes(parseInt(e.target.value))}
-                      className="bg-gray-800 border-gray-700 text-white"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-              <Button
-                onClick={handleStartRecording}
-                className="w-full sm:w-auto bg-red-500 hover:bg-red-600 text-white px-10 py-6 text-lg transition-all shadow-md shadow-red-500/30 hover:shadow-lg hover:shadow-red-500/40"
-                disabled={isLoadingConfigs}
-              >
-                Start Recording
-              </Button>
-              <Button
-                onClick={() => setShowRecordingModal(false)}
-                variant="outline"
-                className="w-full sm:w-auto border-gray-500 hover:border-gray-200 px-10 py-6 text-lg text-zinc-500 bg-zinc-900 hover:bg-zinc-800"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <RecordingModal
+        open={showRecordingModal}
+        onOpenChange={setShowRecordingModal}
+        leaderPort={recordLeaderPort}
+        setLeaderPort={setRecordLeaderPort}
+        followerPort={recordFollowerPort}
+        setFollowerPort={setRecordFollowerPort}
+        leaderConfig={recordLeaderConfig}
+        setLeaderConfig={setRecordLeaderConfig}
+        followerConfig={recordFollowerConfig}
+        setFollowerConfig={setRecordFollowerConfig}
+        leaderConfigs={leaderConfigs}
+        followerConfigs={followerConfigs}
+        datasetRepoId={datasetRepoId}
+        setDatasetRepoId={setDatasetRepoId}
+        singleTask={singleTask}
+        setSingleTask={setSingleTask}
+        numEpisodes={numEpisodes}
+        setNumEpisodes={setNumEpisodes}
+        isLoadingConfigs={isLoadingConfigs}
+        onStart={handleStartRecording}
+      />
     </div>
   );
 };

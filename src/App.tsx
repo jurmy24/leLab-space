@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +12,7 @@ import Recording from "./pages/Recording";
 import Calibration from "./pages/Calibration";
 import Training from "./pages/Training";
 import { UrdfProvider } from "./contexts/UrdfContext";
+import EditDataset from "./pages/EditDataset";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +30,7 @@ const App = () => (
             <Route path="/recording" element={<Recording />} />
             <Route path="/calibration" element={<Calibration />} />
             <Route path="/training" element={<Training />} />
+            <Route path="/edit-dataset" element={<EditDataset />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

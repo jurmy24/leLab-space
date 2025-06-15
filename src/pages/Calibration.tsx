@@ -17,7 +17,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft,
   Settings,
-  Wrench,
   Activity,
   CheckCircle,
   XCircle,
@@ -30,6 +29,7 @@ import {
   List,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import Logo from "@/components/Logo";
 
 interface CalibrationStatus {
   calibration_active: boolean;
@@ -361,7 +361,7 @@ const Calibration = () => {
     switch (calibrationStatus.status) {
       case "idle":
         return {
-          color: "bg-gray-500",
+          color: "bg-slate-500",
           icon: <Settings className="w-4 h-4" />,
           text: "Idle",
         };
@@ -397,7 +397,7 @@ const Calibration = () => {
         };
       default:
         return {
-          color: "bg-gray-500",
+          color: "bg-slate-500",
           icon: <Settings className="w-4 h-4" />,
           text: "Unknown",
         };
@@ -414,32 +414,31 @@ const Calibration = () => {
   }, [calibrationStatus.console_output]);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
+    <div className="min-h-screen bg-slate-900 text-white p-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/")}
-            className="border-gray-700 hover:bg-gray-800"
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate(-1)}
+            className="text-slate-400 hover:text-white hover:bg-slate-800"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Home
+            <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-3">
-            <Wrench className="w-8 h-8 text-orange-500" />
+            <Logo iconOnly />
             <h1 className="text-3xl font-bold">Device Calibration</h1>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Configuration Panel */}
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-slate-800/60 border-slate-700 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="w-5 h-5" />
-                Calibration Configuration
+              <CardTitle className="flex items-center gap-2 text-slate-200">
+                <Settings className="w-5 h-5 text-blue-400" />
+                Configuration
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -447,24 +446,24 @@ const Calibration = () => {
               <div className="space-y-2">
                 <Label
                   htmlFor="deviceType"
-                  className="text-sm font-medium text-gray-300"
+                  className="text-sm font-medium text-slate-300"
                 >
                   Device Type *
                 </Label>
                 <Select value={deviceType} onValueChange={setDeviceType}>
-                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white rounded-md">
                     <SelectValue placeholder="Select device type" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectContent className="bg-slate-800 border-slate-700 text-white">
                     <SelectItem
                       value="robot"
-                      className="text-white hover:bg-gray-700"
+                      className="hover:bg-slate-700"
                     >
                       Robot (Follower)
                     </SelectItem>
                     <SelectItem
                       value="teleop"
-                      className="text-white hover:bg-gray-700"
+                      className="hover:bg-slate-700"
                     >
                       Teleoperator (Leader)
                     </SelectItem>
@@ -476,7 +475,7 @@ const Calibration = () => {
               <div className="space-y-2">
                 <Label
                   htmlFor="port"
-                  className="text-sm font-medium text-gray-300"
+                  className="text-sm font-medium text-slate-300"
                 >
                   Port *
                 </Label>
@@ -484,8 +483,8 @@ const Calibration = () => {
                   id="port"
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
-                  placeholder="/dev/tty.usbmodem5A460816421"
-                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="/dev/tty.usbmodem..."
+                  className="bg-slate-700 border-slate-600 text-white rounded-md"
                 />
               </div>
 
@@ -493,7 +492,7 @@ const Calibration = () => {
               <div className="space-y-2">
                 <Label
                   htmlFor="configFile"
-                  className="text-sm font-medium text-gray-300"
+                  className="text-sm font-medium text-slate-300"
                 >
                   Calibration Config *
                 </Label>
@@ -501,8 +500,8 @@ const Calibration = () => {
                   id="configFile"
                   value={configFile}
                   onChange={(e) => setConfigFile(e.target.value)}
-                  placeholder="config_name (without .json extension)"
-                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="config_name (e.g., my_robot_v1)"
+                  className="bg-slate-700 border-slate-600 text-white rounded-md"
                 />
               </div>
 
@@ -510,18 +509,18 @@ const Calibration = () => {
               {deviceType && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <List className="w-4 h-4 text-gray-400" />
-                    <Label className="text-sm font-medium text-gray-300">
+                    <List className="w-4 h-4 text-slate-400" />
+                    <Label className="text-sm font-medium text-slate-300">
                       Available Configurations
                     </Label>
                     {isLoadingConfigs && (
-                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                     )}
                   </div>
 
-                  <div className="max-h-40 overflow-y-auto bg-gray-700 rounded-lg border border-gray-600">
+                  <div className="max-h-40 overflow-y-auto bg-slate-900/50 rounded-lg border border-slate-700">
                     {availableConfigs.length === 0 ? (
-                      <div className="p-3 text-center text-gray-400 text-sm">
+                      <div className="p-3 text-center text-slate-400 text-sm">
                         {isLoadingConfigs
                           ? "Loading..."
                           : "No configurations found"}
@@ -531,7 +530,7 @@ const Calibration = () => {
                         {availableConfigs.map((config) => (
                           <div
                             key={config.name}
-                            className="flex items-center justify-between bg-gray-600 rounded px-3 py-2 hover:bg-gray-500 transition-colors"
+                            className="flex items-center justify-between bg-slate-700/50 rounded-md px-3 py-2 hover:bg-slate-700 transition-colors"
                           >
                             <div className="flex-1 min-w-0">
                               <button
@@ -541,7 +540,7 @@ const Calibration = () => {
                               >
                                 {config.name}
                               </button>
-                              <div className="text-xs text-gray-400">
+                              <div className="text-xs text-slate-400">
                                 {new Date(
                                   config.modified * 1000
                                 ).toLocaleDateString()}
@@ -554,7 +553,7 @@ const Calibration = () => {
                                 e.stopPropagation();
                                 handleDeleteConfig(config.name);
                               }}
-                              className="ml-3 p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                              className="ml-3 p-1 text-red-500/80 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
                               title={`Delete ${config.name}`}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -567,14 +566,14 @@ const Calibration = () => {
                 </div>
               )}
 
-              <Separator className="bg-gray-700" />
+              <Separator className="bg-slate-700" />
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-3">
                 {!calibrationStatus.calibration_active ? (
                   <Button
                     onClick={handleStartCalibration}
-                    className="w-full bg-orange-500 hover:bg-orange-600 text-white py-6 text-lg"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-full py-6 text-lg"
                     disabled={
                       isLoadingConfigs || !deviceType || !port || !configFile
                     }
@@ -586,7 +585,7 @@ const Calibration = () => {
                   <Button
                     onClick={handleStopCalibration}
                     variant="destructive"
-                    className="w-full py-6 text-lg"
+                    className="w-full rounded-full py-6 text-lg"
                   >
                     <Square className="w-5 h-5 mr-2" />
                     Stop Calibration
@@ -596,7 +595,7 @@ const Calibration = () => {
                 <Button
                   onClick={handleReset}
                   variant="outline"
-                  className="w-full border-gray-600 hover:bg-gray-700 py-6 text-lg"
+                  className="w-full border-slate-600 hover:bg-slate-700 rounded-full py-6 text-lg"
                   disabled={calibrationStatus.calibration_active}
                 >
                   <RefreshCw className="w-5 h-5 mr-2" />
@@ -607,44 +606,46 @@ const Calibration = () => {
           </Card>
 
           {/* Status Panel */}
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-slate-800/60 border-slate-700 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5" />
-                Calibration Status
+              <CardTitle className="flex items-center gap-2 text-slate-200">
+                <Activity className="w-5 h-5 text-teal-400" />
+                Status
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Current Status */}
-              <div className="flex items-center justify-between">
-                <span className="text-gray-300">Status:</span>
-                <Badge className={`${statusDisplay.color} text-white`}>
+              <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-md">
+                <span className="text-slate-300">Status:</span>
+                <Badge
+                  className={`${statusDisplay.color} text-white rounded-md`}
+                >
                   {statusDisplay.icon}
                   <span className="ml-2">{statusDisplay.text}</span>
                 </Badge>
               </div>
 
               {calibrationStatus.device_type && (
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-300">Device:</span>
+                <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-md">
+                  <span className="text-slate-300">Device:</span>
                   <span className="text-white capitalize">
                     {calibrationStatus.device_type}
                   </span>
                 </div>
               )}
 
-              {/* Calibration Console - Show during calibration */}
+              {/* Calibration Console */}
               {calibrationStatus.calibration_active && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Settings className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-gray-300">
+                    <Settings className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm font-medium text-slate-300">
                       Calibration Console
                     </span>
                   </div>
 
                   {/* Console Output */}
-                  <div className="bg-black rounded-lg p-4 font-mono text-sm">
+                  <div className="bg-black rounded-lg p-4 font-mono text-sm border border-slate-700">
                     <div
                       ref={consoleRef}
                       className="text-green-400 h-80 overflow-y-auto whitespace-pre-wrap"
@@ -658,13 +659,13 @@ const Calibration = () => {
                     <Button
                       onClick={handleSendEnter}
                       disabled={!calibrationStatus.calibration_active}
-                      className="bg-blue-500 hover:bg-blue-600 px-8 py-2"
+                      className="bg-blue-600 hover:bg-blue-700 px-8 py-2 rounded-full"
                     >
                       Press Enter
                     </Button>
                   </div>
 
-                  <div className="text-xs text-gray-400 text-center">
+                  <div className="text-xs text-slate-400 text-center">
                     Click the button above to send Enter to the calibration
                     process
                   </div>
@@ -673,38 +674,35 @@ const Calibration = () => {
 
               {/* Status Messages */}
               {calibrationStatus.status === "connecting" && (
-                <Alert className="bg-yellow-900/50 border-yellow-700">
+                <Alert className="bg-yellow-900/50 border-yellow-700 text-yellow-200">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    Connecting to the device. Please ensure the device is
-                    properly connected.
+                    Connecting to the device. Please ensure it's connected.
                   </AlertDescription>
                 </Alert>
               )}
 
               {calibrationStatus.status === "calibrating" && (
-                <Alert className="bg-blue-900/50 border-blue-700">
+                <Alert className="bg-blue-900/50 border-blue-700 text-blue-200">
                   <Activity className="h-4 w-4" />
                   <AlertDescription>
-                    Calibration in progress. Please follow the instructions on
-                    the device and do not disconnect.
+                    Calibration in progress. Follow device instructions.
                   </AlertDescription>
                 </Alert>
               )}
 
               {calibrationStatus.status === "completed" && (
-                <Alert className="bg-green-900/50 border-green-700">
+                <Alert className="bg-green-900/50 border-green-700 text-green-200">
                   <CheckCircle className="h-4 w-4" />
                   <AlertDescription>
-                    Calibration completed successfully! The device is now ready
-                    for use.
+                    Calibration completed successfully!
                   </AlertDescription>
                 </Alert>
               )}
 
               {calibrationStatus.status === "error" &&
                 calibrationStatus.error && (
-                  <Alert className="bg-red-900/50 border-red-700">
+                  <Alert className="bg-red-900/50 border-red-700 text-red-200">
                     <XCircle className="h-4 w-4" />
                     <AlertDescription>
                       <strong>Error:</strong> {calibrationStatus.error}
@@ -713,19 +711,17 @@ const Calibration = () => {
                 )}
 
               {/* Instructions */}
-              <div className="bg-gray-700 p-4 rounded-lg">
-                <h4 className="font-semibold mb-2">
-                  Calibration Instructions:
+              <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                <h4 className="font-semibold mb-2 text-slate-200">
+                  Instructions:
                 </h4>
-                <ol className="text-sm text-gray-300 space-y-1">
-                  <li>1. Select the device type you want to calibrate</li>
-                  <li>2. Enter the correct port for your device</li>
-                  <li>3. Choose the appropriate calibration configuration</li>
-                  <li>4. Move the robot in a middle position</li>
-                  <li>
-                    5. Click "Start Calibration" and follow device prompts
-                  </li>
-                  <li>6. Move each motor all the way on both sides</li>
+                <ol className="text-sm text-slate-300 space-y-1 list-decimal list-inside">
+                  <li>Select device type.</li>
+                  <li>Enter the correct port.</li>
+                  <li>Provide a name for the new calibration config.</li>
+                  <li>Move the robot to a middle position.</li>
+                  <li>Click "Start Calibration" & follow device prompts.</li>
+                  <li>Move each motor to its limits on both sides.</li>
                 </ol>
               </div>
             </CardContent>
