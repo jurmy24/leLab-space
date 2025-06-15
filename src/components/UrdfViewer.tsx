@@ -22,6 +22,7 @@ import {
 if (typeof window !== "undefined" && !customElements.get("urdf-viewer")) {
   customElements.define("urdf-viewer", URDFManipulator);
 }
+import * as THREE from "three";
 
 // Extend the interface for the URDF viewer element to include background property
 interface UrdfViewerElement extends HTMLElement {
@@ -167,6 +168,66 @@ const UrdfViewer: React.FC = () => {
       setHighlightedJoint
     );
 
+    // Function to fit the robot to the camera view
+    const fitRobotToView = (viewer: URDFViewerElement) => {
+      if (!viewer || !viewer.robot) {
+        console.log(
+          "[RobotViewer] Cannot fit to view: No viewer or robot available"
+        );
+        return;
+      }
+
+      try {
+        // Create a bounding box for the robot
+        const boundingBox = new THREE.Box3().setFromObject(viewer.robot);
+
+        // Calculate the center of the bounding box
+        const center = new THREE.Vector3();
+        boundingBox.getCenter(center);
+
+        // Calculate the size of the bounding box
+        const size = new THREE.Vector3();
+        boundingBox.getSize(size);
+
+        // Get the maximum dimension to ensure the entire robot is visible
+        const maxDim = Math.max(size.x, size.y, size.z);
+
+        // Position camera to see the center of the model
+        viewer.camera.position.copy(center);
+
+        // Move the camera back to see the entire robot
+        // Use the model's up direction to determine which axis to move along
+        const upVector = new THREE.Vector3();
+        if (viewer.up === "+Z" || viewer.up === "Z") {
+          upVector.set(1, 1, 1); // Move back in a diagonal
+        } else if (viewer.up === "+Y" || viewer.up === "Y") {
+          upVector.set(1, 1, 1); // Move back in a diagonal
+        } else {
+          upVector.set(1, 1, 1); // Default direction
+        }
+
+        // Normalize the vector and multiply by the size
+        upVector.normalize().multiplyScalar(maxDim * 1.3);
+        viewer.camera.position.add(upVector);
+
+        // Make the camera look at the center of the model
+        viewer.controls.target.copy(center);
+
+        // Update controls and mark for redraw
+        viewer.controls.update();
+        viewer.redraw();
+
+        console.log("[RobotViewer] Robot auto-fitted to view");
+      } catch (error) {
+        console.error("[RobotViewer] Error fitting robot to view:", error);
+      }
+    };
+
+    // Add event listener for when the robot is loaded to auto-fit to view
+    const onRobotLoad = () => {
+      fitRobotToView(viewer);
+    };
+
     // Setup animation event handler for the default model or when hasAnimation is true
     const onModelProcessed = () => {
       hasInitializedRef.current = true;
@@ -177,6 +238,8 @@ const UrdfViewer: React.FC = () => {
           cleanupAnimationRef.current = null;
         }
       }
+      // Auto-fit the robot to view when the model is processed
+      onRobotLoad();
     };
 
     viewer.addEventListener("urdf-processed", onModelProcessed);
@@ -192,7 +255,13 @@ const UrdfViewer: React.FC = () => {
       cleanupModelLoading();
       viewer.removeEventListener("urdf-processed", onModelProcessed);
     };
-  }, [isDefaultModel, customUrdfPath, urlModifierFunc, defaultUrlModifier]);
+  }, [
+    isDefaultModel,
+    customUrdfPath,
+    urlModifierFunc,
+    defaultUrlModifier,
+    alternativeUrdfModels,
+  ]);
 
   return (
     <div
