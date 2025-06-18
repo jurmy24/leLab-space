@@ -292,10 +292,17 @@ const Landing = () => {
       color: "bg-yellow-500 hover:bg-yellow-600",
     },
     {
+      title: "Record Dataset",
+      description: "Record episodes for training data.",
+      handler: handleRecordingClick,
+      color: "bg-red-500 hover:bg-red-600",
+    },
+    {
       title: "Direct Follower Control",
-      description: "Train a model on your datasets.",
+      description: "Control robot arm with mouse movements.",
       handler: handleDirectFollowerClick,
       color: "bg-blue-500 hover:bg-blue-600",
+      isWorkInProgress: true,
     },
     {
       title: "Calibration",
@@ -303,12 +310,6 @@ const Landing = () => {
       handler: handleCalibrationClick,
       color: "bg-indigo-500 hover:bg-indigo-600",
       isWorkInProgress: true,
-    },
-    {
-      title: "Record Dataset",
-      description: "Record episodes for training data.",
-      handler: handleRecordingClick,
-      color: "bg-red-500 hover:bg-red-600",
     },
     {
       title: "Training",

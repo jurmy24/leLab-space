@@ -1,9 +1,13 @@
-
-import React from 'react';
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, AlertTriangle } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Action } from './types';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Action } from "./types";
 
 interface ActionListProps {
   actions: Action[];
@@ -24,7 +28,8 @@ const ActionList: React.FC<ActionListProps> = ({ actions, robotModel }) => {
         )}
         {isLeKiwi && (
           <p className="text-center text-yellow-500 mb-4">
-            LeKiwi model is not yet supported. Please select another model to continue.
+            LeKiwi model is not yet supported. Please select another model to
+            continue.
           </p>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -49,11 +54,13 @@ const ActionList: React.FC<ActionListProps> = ({ actions, robotModel }) => {
                             <p>Work in progress</p>
                           </TooltipContent>
                         </Tooltip>
-                        <span className="text-yellow-500 text-xs font-medium">Work in Progress</span>
+                        <span className="text-yellow-500 text-xs font-medium">
+                          Work in Progress
+                        </span>
                       </div>
                     )}
                   </div>
-                  <p className="text-gray-400 text-sm">
+                  <p className="text-gray-400 text-sm text-left">
                     {action.description}
                   </p>
                 </div>
