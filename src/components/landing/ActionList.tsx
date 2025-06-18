@@ -43,7 +43,9 @@ const ActionList: React.FC<ActionListProps> = ({ actions, robotModel }) => {
               <div className="flex items-center gap-2">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-lg">{action.title}</h3>
+                    <h3 className="font-semibold text-lg text-left">
+                      {action.title}
+                    </h3>
                     {action.isWorkInProgress && (
                       <div className="flex items-center gap-1">
                         <Tooltip>

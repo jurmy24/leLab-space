@@ -16,10 +16,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { QrCode } from "lucide-react";
+
 import PortDetectionModal from "@/components/ui/PortDetectionModal";
 import PortDetectionButton from "@/components/ui/PortDetectionButton";
-import QrCodeModal from "@/components/recording/QrCodeModal";
+
+import CameraConfiguration, {
+  CameraConfig,
+} from "@/components/recording/CameraConfiguration";
 import { useApi } from "@/contexts/ApiContext";
 import { useAutoSave } from "@/hooks/useAutoSave";
 interface RecordingModalProps {
@@ -41,8 +44,11 @@ interface RecordingModalProps {
   setSingleTask: (value: string) => void;
   numEpisodes: number;
   setNumEpisodes: (value: number) => void;
+  cameras: CameraConfig[];
+  setCameras: (cameras: CameraConfig[]) => void;
   isLoadingConfigs: boolean;
   onStart: () => void;
+  releaseStreamsRef?: React.MutableRefObject<(() => void) | null>;
 }
 const RecordingModal: React.FC<RecordingModalProps> = ({
   open,
@@ -63,8 +69,11 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
   setSingleTask,
   numEpisodes,
   setNumEpisodes,
+  cameras,
+  setCameras,
   isLoadingConfigs,
   onStart,
+  releaseStreamsRef,
 }) => {
   const { baseUrl, fetchWithHeaders } = useApi();
   const { debouncedSavePort, debouncedSaveConfig } = useAutoSave();
@@ -72,8 +81,6 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
   const [detectionRobotType, setDetectionRobotType] = useState<
     "leader" | "follower"
   >("leader");
-  const [showQrCodeModal, setShowQrCodeModal] = useState(false);
-  const [sessionId, setSessionId] = useState("");
 
   const handlePortDetection = (robotType: "leader" | "follower") => {
     setDetectionRobotType(robotType);
@@ -136,19 +143,29 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
 
         // Load leader configuration
         const leaderConfigResponse = await fetchWithHeaders(
-          `${baseUrl}/robot-config/leader?available_configs=${leaderConfigs.join(',')}`
+          `${baseUrl}/robot-config/leader?available_configs=${leaderConfigs.join(
+            ","
+          )}`
         );
         const leaderConfigData = await leaderConfigResponse.json();
-        if (leaderConfigData.status === "success" && leaderConfigData.default_config) {
+        if (
+          leaderConfigData.status === "success" &&
+          leaderConfigData.default_config
+        ) {
           setLeaderConfig(leaderConfigData.default_config);
         }
 
         // Load follower configuration
         const followerConfigResponse = await fetchWithHeaders(
-          `${baseUrl}/robot-config/follower?available_configs=${followerConfigs.join(',')}`
+          `${baseUrl}/robot-config/follower?available_configs=${followerConfigs.join(
+            ","
+          )}`
         );
         const followerConfigData = await followerConfigResponse.json();
-        if (followerConfigData.status === "success" && followerConfigData.default_config) {
+        if (
+          followerConfigData.status === "success" &&
+          followerConfigData.default_config
+        ) {
           setFollowerConfig(followerConfigData.default_config);
         }
       } catch (error) {
@@ -159,16 +176,18 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
     if (open && leaderConfigs.length > 0 && followerConfigs.length > 0) {
       loadSavedData();
     }
-  }, [open, setLeaderPort, setFollowerPort, setLeaderConfig, setFollowerConfig, leaderConfigs, followerConfigs, baseUrl, fetchWithHeaders]);
+  }, [
+    open,
+    setLeaderPort,
+    setFollowerPort,
+    setLeaderConfig,
+    setFollowerConfig,
+    leaderConfigs,
+    followerConfigs,
+    baseUrl,
+    fetchWithHeaders,
+  ]);
 
-  const handleQrCodeClick = () => {
-    // Generate a session ID for this recording session
-    const newSessionId = `recording_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-    setSessionId(newSessionId);
-    setShowQrCodeModal(true);
-  };
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -188,23 +207,6 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
               Configure the robot arm settings and dataset parameters for
               recording.
             </DialogDescription>
-
-            <div className="border-y border-gray-700 py-6 flex flex-col items-center gap-4 bg-gray-800/50 rounded-lg">
-              <h3 className="text-lg font-semibold text-white">
-                Need an extra angle?
-              </h3>
-              <p className="text-sm text-gray-400 -mt-2">
-                Add your phone as a secondary camera.
-              </p>
-              <Button
-                onClick={handleQrCodeClick}
-                title="Add Phone Camera"
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 flex items-center gap-2 transition-all duration-300 shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transform hover:scale-105 rounded-lg"
-              >
-                <QrCode className="w-5 h-5" />
-                <span>Add Phone Camera</span>
-              </Button>
-            </div>
 
             <div className="grid grid-cols-1 gap-6">
               <div className="space-y-4">
@@ -277,7 +279,9 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                       <Input
                         id="recordFollowerPort"
                         value={followerPort}
-                        onChange={(e) => handleFollowerPortChange(e.target.value)}
+                        onChange={(e) =>
+                          handleFollowerPortChange(e.target.value)
+                        }
                         placeholder="/dev/tty.usbmodem5A460816621"
                         className="bg-gray-800 border-gray-700 text-white flex-1"
                       />
@@ -377,6 +381,14 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              <div className="space-y-4">
+                <CameraConfiguration
+                  cameras={cameras}
+                  onCamerasChange={setCameras}
+                  releaseStreamsRef={releaseStreamsRef}
+                />
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
@@ -404,12 +416,6 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
         onOpenChange={setShowPortDetection}
         robotType={detectionRobotType}
         onPortDetected={handlePortDetected}
-      />
-
-      <QrCodeModal
-        open={showQrCodeModal}
-        onOpenChange={setShowQrCodeModal}
-        sessionId={sessionId}
       />
     </>
   );
