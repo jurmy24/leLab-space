@@ -21,6 +21,7 @@ import PortDetectionModal from "@/components/ui/PortDetectionModal";
 import PortDetectionButton from "@/components/ui/PortDetectionButton";
 import QrCodeModal from "@/components/recording/QrCodeModal";
 import { useApi } from "@/contexts/ApiContext";
+import { useAutoSave } from "@/hooks/useAutoSave";
 interface RecordingModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -66,6 +67,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
   onStart,
 }) => {
   const { baseUrl, fetchWithHeaders } = useApi();
+  const { debouncedSavePort, debouncedSaveConfig } = useAutoSave();
   const [showPortDetection, setShowPortDetection] = useState(false);
   const [detectionRobotType, setDetectionRobotType] = useState<
     "leader" | "follower"
@@ -73,9 +75,46 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
   const [showQrCodeModal, setShowQrCodeModal] = useState(false);
   const [sessionId, setSessionId] = useState("");
 
-  // Load saved ports on component mount
+  const handlePortDetection = (robotType: "leader" | "follower") => {
+    setDetectionRobotType(robotType);
+    setShowPortDetection(true);
+  };
+  const handlePortDetected = (port: string) => {
+    if (detectionRobotType === "leader") {
+      setLeaderPort(port);
+    } else {
+      setFollowerPort(port);
+    }
+  };
+
+  // Enhanced port change handlers that save automatically
+  const handleLeaderPortChange = (value: string) => {
+    setLeaderPort(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSavePort("leader", value);
+  };
+
+  const handleFollowerPortChange = (value: string) => {
+    setFollowerPort(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSavePort("follower", value);
+  };
+
+  // Enhanced config change handlers that save automatically
+  const handleLeaderConfigChange = (value: string) => {
+    setLeaderConfig(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSaveConfig("leader", value);
+  };
+
+  const handleFollowerConfigChange = (value: string) => {
+    setFollowerConfig(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSaveConfig("follower", value);
+  };
+  // Load saved ports and configurations on component mount
   useEffect(() => {
-    const loadSavedPorts = async () => {
+    const loadSavedData = async () => {
       try {
         // Load leader port
         const leaderResponse = await fetchWithHeaders(
@@ -94,25 +133,34 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
         if (followerData.status === "success" && followerData.default_port) {
           setFollowerPort(followerData.default_port);
         }
+
+        // Load leader configuration
+        const leaderConfigResponse = await fetchWithHeaders(
+          `${baseUrl}/robot-config/leader?available_configs=${leaderConfigs.join(',')}`
+        );
+        const leaderConfigData = await leaderConfigResponse.json();
+        if (leaderConfigData.status === "success" && leaderConfigData.default_config) {
+          setLeaderConfig(leaderConfigData.default_config);
+        }
+
+        // Load follower configuration
+        const followerConfigResponse = await fetchWithHeaders(
+          `${baseUrl}/robot-config/follower?available_configs=${followerConfigs.join(',')}`
+        );
+        const followerConfigData = await followerConfigResponse.json();
+        if (followerConfigData.status === "success" && followerConfigData.default_config) {
+          setFollowerConfig(followerConfigData.default_config);
+        }
       } catch (error) {
-        console.error("Error loading saved ports:", error);
+        console.error("Error loading saved data:", error);
       }
     };
-    if (open) {
-      loadSavedPorts();
+
+    if (open && leaderConfigs.length > 0 && followerConfigs.length > 0) {
+      loadSavedData();
     }
-  }, [open, setLeaderPort, setFollowerPort]);
-  const handlePortDetection = (robotType: "leader" | "follower") => {
-    setDetectionRobotType(robotType);
-    setShowPortDetection(true);
-  };
-  const handlePortDetected = (port: string) => {
-    if (detectionRobotType === "leader") {
-      setLeaderPort(port);
-    } else {
-      setFollowerPort(port);
-    }
-  };
+  }, [open, setLeaderPort, setFollowerPort, setLeaderConfig, setFollowerConfig, leaderConfigs, followerConfigs, baseUrl, fetchWithHeaders]);
+
   const handleQrCodeClick = () => {
     // Generate a session ID for this recording session
     const newSessionId = `recording_${Date.now()}_${Math.random()
@@ -175,7 +223,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                       <Input
                         id="recordLeaderPort"
                         value={leaderPort}
-                        onChange={(e) => setLeaderPort(e.target.value)}
+                        onChange={(e) => handleLeaderPortChange(e.target.value)}
                         placeholder="/dev/tty.usbmodem5A460816421"
                         className="bg-gray-800 border-gray-700 text-white flex-1"
                       />
@@ -194,7 +242,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                     </Label>
                     <Select
                       value={leaderConfig}
-                      onValueChange={setLeaderConfig}
+                      onValueChange={handleLeaderConfigChange}
                     >
                       <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                         <SelectValue
@@ -229,7 +277,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                       <Input
                         id="recordFollowerPort"
                         value={followerPort}
-                        onChange={(e) => setFollowerPort(e.target.value)}
+                        onChange={(e) => handleFollowerPortChange(e.target.value)}
                         placeholder="/dev/tty.usbmodem5A460816621"
                         className="bg-gray-800 border-gray-700 text-white flex-1"
                       />
@@ -248,7 +296,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                     </Label>
                     <Select
                       value={followerConfig}
-                      onValueChange={setFollowerConfig}
+                      onValueChange={handleFollowerConfigChange}
                     >
                       <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                         <SelectValue
