@@ -73,4 +73,22 @@ wheels/
 
 # Virtual Environment
 venv/
-ENV/ 
+ENV/
+
+# Generated certificates and SSL files
+certs/
+*.pem
+*.key
+*.crt
+*.cert
+
+# Test files and temporary scripts
+test-*.html
+test_*.html
+test-*.ts
+test_*.tsx
+*test-*.ts
+*test-*.tsx
+
+# Generated documentation and setup files
+HTTPS_SETUP.md 
