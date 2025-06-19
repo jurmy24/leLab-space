@@ -19,6 +19,8 @@ import {
 import { QrCode } from "lucide-react";
 import PortDetectionModal from "@/components/ui/PortDetectionModal";
 import PortDetectionButton from "@/components/ui/PortDetectionButton";
+import CameraDetectionModal from "@/components/ui/CameraDetectionModal";
+import CameraDetectionButton from "@/components/ui/CameraDetectionButton";
 import QrCodeModal from "@/components/recording/QrCodeModal";
 import { useApi } from "@/contexts/ApiContext";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -74,6 +76,8 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
   >("leader");
   const [showQrCodeModal, setShowQrCodeModal] = useState(false);
   const [sessionId, setSessionId] = useState("");
+  const [showCameraDetection, setShowCameraDetection] = useState(false);
+  const [cameraConfig, setCameraConfig] = useState<any>({});
 
   const handlePortDetection = (robotType: "leader" | "follower") => {
     setDetectionRobotType(robotType);
@@ -151,6 +155,9 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
         if (followerConfigData.status === "success" && followerConfigData.default_config) {
           setFollowerConfig(followerConfigData.default_config);
         }
+
+        // Load camera configuration
+        await loadCameraConfig();
       } catch (error) {
         console.error("Error loading saved data:", error);
       }
@@ -168,6 +175,26 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
       .substr(2, 9)}`;
     setSessionId(newSessionId);
     setShowQrCodeModal(true);
+  };
+
+  const handleCameraSelected = (cameraData: any) => {
+    setCameraConfig(prev => ({
+      ...prev,
+      [cameraData.name]: cameraData.config
+    }));
+  };
+
+  const loadCameraConfig = async () => {
+    try {
+      const response = await fetchWithHeaders(`${baseUrl}/cameras/config`);
+      const data = await response.json();
+      
+      if (data.status === "success" && data.camera_config) {
+        setCameraConfig(data.camera_config.cameras || {});
+      }
+    } catch (error) {
+      console.error("Error loading camera config:", error);
+    }
   };
   return (
     <>
@@ -323,6 +350,58 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                 </div>
               </div>
 
+              {/* Camera Configuration Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white border-b border-gray-700 pb-2 flex-1">
+                    Camera Configuration
+                  </h3>
+                  <CameraDetectionButton
+                    onClick={() => setShowCameraDetection(true)}
+                  />
+                </div>
+                
+                {Object.keys(cameraConfig).length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-400 mb-2">
+                      Configured Cameras ({Object.keys(cameraConfig).length})
+                    </div>
+                    {Object.entries(cameraConfig).map(([name, config]: [string, any]) => (
+                      <div
+                        key={name}
+                        className="flex items-center justify-between p-3 bg-gray-800 rounded-lg border border-gray-700"
+                      >
+                        <div>
+                          <div className="text-white font-medium">{name}</div>
+                          <div className="text-xs text-gray-400">
+                            {config.type} - {config.width}x{config.height} @ {config.fps}fps
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            // Remove camera from config
+                            setCameraConfig(prev => {
+                              const newConfig = { ...prev };
+                              delete newConfig[name];
+                              return newConfig;
+                            });
+                          }}
+                          className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-sm italic">
+                    No cameras configured. Click the camera icon to detect and configure cameras.
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-white border-b border-gray-700 pb-2">
                   Dataset Configuration
@@ -410,6 +489,12 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
         open={showQrCodeModal}
         onOpenChange={setShowQrCodeModal}
         sessionId={sessionId}
+      />
+
+      <CameraDetectionModal
+        open={showCameraDetection}
+        onOpenChange={setShowCameraDetection}
+        onCameraSelected={handleCameraSelected}
       />
     </>
   );
