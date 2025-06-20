@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight } from "lucide-react";
@@ -8,19 +8,18 @@ import ActionList from "@/components/landing/ActionList";
 import PermissionModal from "@/components/landing/PermissionModal";
 import TeleoperationModal from "@/components/landing/TeleoperationModal";
 import RecordingModal from "@/components/landing/RecordingModal";
-
+import NgrokConfigModal from "@/components/landing/NgrokConfigModal";
 import { Action } from "@/components/landing/types";
 import UsageInstructionsModal from "@/components/landing/UsageInstructionsModal";
 import DirectFollowerModal from "@/components/landing/DirectFollowerModal";
 import { useApi } from "@/contexts/ApiContext";
-import { CameraConfig } from "@/components/recording/CameraConfiguration";
 
 const Landing = () => {
   const [robotModel, setRobotModel] = useState("SO101");
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [showTeleoperationModal, setShowTeleoperationModal] = useState(false);
   const [showUsageModal, setShowUsageModal] = useState(false);
-
+  const [showNgrokModal, setShowNgrokModal] = useState(false);
   const [leaderPort, setLeaderPort] = useState("/dev/tty.usbmodem5A460816421");
   const [followerPort, setFollowerPort] = useState(
     "/dev/tty.usbmodem5A460816621"
@@ -45,10 +44,6 @@ const Landing = () => {
   const [datasetRepoId, setDatasetRepoId] = useState("");
   const [singleTask, setSingleTask] = useState("");
   const [numEpisodes, setNumEpisodes] = useState(5);
-  const [cameras, setCameras] = useState<CameraConfig[]>([]);
-
-  // Camera stream release ref
-  const releaseStreamsRef = useRef<(() => void) | null>(null);
 
   // Direct follower control state
   const [showDirectFollowerModal, setShowDirectFollowerModal] = useState(false);
@@ -59,30 +54,6 @@ const Landing = () => {
 
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  // Clear camera state and release streams when returning to landing page
-  useEffect(() => {
-    // If we have cameras and returning from a recording session, clear them
-    if (cameras.length > 0) {
-      console.log(
-        "🧹 Landing page: Cleaning up camera state from previous session"
-      );
-      if (releaseStreamsRef.current) {
-        releaseStreamsRef.current();
-      }
-      setCameras([]); // Clear camera configuration
-    }
-  }, []); // Only run on mount
-
-  // Cleanup when leaving landing page
-  useEffect(() => {
-    return () => {
-      if (releaseStreamsRef.current) {
-        console.log("🧹 Landing page: Cleaning up camera streams on unmount");
-        releaseStreamsRef.current();
-      }
-    };
-  }, []);
 
   const loadConfigs = async () => {
     setIsLoadingConfigs(true);
@@ -125,15 +96,6 @@ const Landing = () => {
     if (robotModel) {
       setShowRecordingModal(true);
       loadConfigs();
-    }
-  };
-
-  const handleRecordingModalClose = (open: boolean) => {
-    setShowRecordingModal(open);
-    // Release camera streams when modal is closed
-    if (!open && releaseStreamsRef.current) {
-      console.log("🧹 Modal closed: Releasing camera streams");
-      releaseStreamsRef.current();
     }
   };
 
@@ -220,40 +182,6 @@ const Landing = () => {
       return;
     }
 
-    // 🔓 CRITICAL: Release all camera streams before backend accesses them
-    if (cameras.length > 0 && releaseStreamsRef.current) {
-      console.log("🔓 Releasing camera streams before starting recording...");
-
-      toast({
-        title: "Preparing Camera Resources",
-        description: `Releasing ${cameras.length} camera stream(s) for recording...`,
-      });
-
-      releaseStreamsRef.current();
-
-      // Wait a moment for camera resources to be fully released
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      console.log("✅ Camera streams released, proceeding with recording...");
-
-      toast({
-        title: "Camera Resources Ready",
-        description:
-          "Camera streams released successfully. Starting recording...",
-      });
-    }
-
-    // Convert cameras to the LeRobot format
-    const cameraDict = cameras.reduce((acc, cam) => {
-      acc[cam.name] = {
-        type: cam.type,
-        camera_index: cam.camera_index,
-        width: cam.width,
-        height: cam.height,
-        fps: cam.fps,
-      };
-      return acc;
-    }, {} as Record<string, { type: string; camera_index?: number; width: number; height: number; fps?: number }>);
-
     const recordingConfig = {
       leader_port: recordLeaderPort,
       follower_port: recordFollowerPort,
@@ -268,7 +196,6 @@ const Landing = () => {
       video: true,
       push_to_hub: false,
       resume: false,
-      cameras: cameraDict,
     };
 
     setShowRecordingModal(false);
@@ -365,17 +292,10 @@ const Landing = () => {
       color: "bg-yellow-500 hover:bg-yellow-600",
     },
     {
-      title: "Record Dataset",
-      description: "Record episodes for training data.",
-      handler: handleRecordingClick,
-      color: "bg-red-500 hover:bg-red-600",
-    },
-    {
       title: "Direct Follower Control",
-      description: "Control robot arm with mouse movements.",
+      description: "Train a model on your datasets.",
       handler: handleDirectFollowerClick,
       color: "bg-blue-500 hover:bg-blue-600",
-      isWorkInProgress: true,
     },
     {
       title: "Calibration",
@@ -383,6 +303,12 @@ const Landing = () => {
       handler: handleCalibrationClick,
       color: "bg-indigo-500 hover:bg-indigo-600",
       isWorkInProgress: true,
+    },
+    {
+      title: "Record Dataset",
+      description: "Record episodes for training data.",
+      handler: handleRecordingClick,
+      color: "bg-red-500 hover:bg-red-600",
     },
     {
       title: "Training",
@@ -403,7 +329,10 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center p-4 pt-12 sm:pt-20">
       <div className="w-full max-w-7xl mx-auto px-4 mb-12">
-        <LandingHeader onShowInstructions={() => setShowUsageModal(true)} />
+        <LandingHeader
+          onShowInstructions={() => setShowUsageModal(true)}
+          onShowNgrokConfig={() => setShowNgrokModal(true)}
+        />
       </div>
 
       <div className="p-8 bg-gray-900 rounded-lg shadow-xl w-full max-w-4xl space-y-6 border border-gray-700">
@@ -444,7 +373,7 @@ const Landing = () => {
 
       <RecordingModal
         open={showRecordingModal}
-        onOpenChange={handleRecordingModalClose}
+        onOpenChange={setShowRecordingModal}
         leaderPort={recordLeaderPort}
         setLeaderPort={setRecordLeaderPort}
         followerPort={recordFollowerPort}
@@ -461,11 +390,8 @@ const Landing = () => {
         setSingleTask={setSingleTask}
         numEpisodes={numEpisodes}
         setNumEpisodes={setNumEpisodes}
-        cameras={cameras}
-        setCameras={setCameras}
         isLoadingConfigs={isLoadingConfigs}
         onStart={handleStartRecording}
-        releaseStreamsRef={releaseStreamsRef}
       />
 
       <DirectFollowerModal
@@ -478,6 +404,10 @@ const Landing = () => {
         followerConfigs={followerConfigs}
         isLoadingConfigs={isLoadingConfigs}
         onStart={handleStartDirectFollower}
+      />
+      <NgrokConfigModal
+        open={showNgrokModal}
+        onOpenChange={setShowNgrokModal}
       />
     </div>
   );
