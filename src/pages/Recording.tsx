@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Square, SkipForward, RotateCcw, Play } from "lucide-react";
 import UrdfViewer from "@/components/UrdfViewer";
 import UrdfProcessorInitializer from "@/components/UrdfProcessorInitializer";
-import PhoneCameraFeed from "@/components/recording/PhoneCameraFeed";
+
 import { useApi } from "@/contexts/ApiContext";
 
 interface RecordingConfig {
@@ -56,10 +56,9 @@ const Recording = () => {
   );
   const [recordingSessionStarted, setRecordingSessionStarted] = useState(false);
 
-  // QR Code and camera states
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [sessionId, setSessionId] = useState<string>("");
-  const [phoneCameraConnected, setPhoneCameraConnected] = useState(false);
+  // Local UI state for immediate user feedback
+  const [transitioningToReset, setTransitioningToReset] = useState(false);
+  const [transitioningToNext, setTransitioningToNext] = useState(false);
 
   // Redirect if no config provided
   useEffect(() => {
@@ -92,7 +91,24 @@ const Recording = () => {
           );
           if (response.ok) {
             const status = await response.json();
+            console.log(
+              `📊 Backend Status: ${status.current_phase} | Transition States: reset=${transitioningToReset}, next=${transitioningToNext}`
+            );
             setBackendStatus(status);
+
+            // 🎯 CLEAR TRANSITION STATES: Only clear when backend actually reaches the expected phase
+            if (status.current_phase === "resetting" && transitioningToReset) {
+              console.log(
+                "✅ Clearing transitioningToReset - backend reached resetting phase"
+              );
+              setTransitioningToReset(false);
+            }
+            if (status.current_phase === "recording" && transitioningToNext) {
+              console.log(
+                "✅ Clearing transitioningToNext - backend reached recording phase"
+              );
+              setTransitioningToNext(false);
+            }
 
             // If backend recording stopped and session ended, navigate to upload
             if (
@@ -126,52 +142,14 @@ const Recording = () => {
     return () => {
       if (statusInterval) clearInterval(statusInterval);
     };
-  }, [recordingSessionStarted, recordingConfig, navigate, toast]);
-
-  // Generate session ID when component loads
-  useEffect(() => {
-    const newSessionId = `session_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-    setSessionId(newSessionId);
-  }, []);
-
-  // Listen for phone camera connections
-  useEffect(() => {
-    if (!sessionId) return;
-
-    const connectToPhoneCameraWS = () => {
-      const ws = new WebSocket(`${wsBaseUrl}/ws/camera/${sessionId}`);
-
-      ws.onopen = () => {
-        console.log("Phone camera WebSocket connected");
-      };
-
-      ws.onmessage = (event) => {
-        if (event.data === "camera_connected" && !phoneCameraConnected) {
-          setPhoneCameraConnected(true);
-          toast({
-            title: "Phone Camera Connected!",
-            description: "New camera feed detected and connected successfully.",
-          });
-        }
-      };
-
-      ws.onclose = () => {
-        console.log("Phone camera WebSocket disconnected");
-        setPhoneCameraConnected(false);
-      };
-
-      ws.onerror = (error) => {
-        console.error("Phone camera WebSocket error:", error);
-      };
-
-      return ws;
-    };
-
-    const ws = connectToPhoneCameraWS();
-    return () => ws.close();
-  }, [sessionId, phoneCameraConnected, toast]);
+  }, [
+    recordingSessionStarted,
+    recordingConfig,
+    navigate,
+    toast,
+    transitioningToReset,
+    transitioningToNext,
+  ]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -218,6 +196,24 @@ const Recording = () => {
   const handleExitEarly = async () => {
     if (!backendStatus?.available_controls.exit_early) return;
 
+    // 🎯 IMMEDIATE UI FEEDBACK: Show transition state before backend response
+    const currentPhase = backendStatus.current_phase;
+    if (currentPhase === "recording") {
+      console.log("🎯 Setting transitioningToReset = true");
+      setTransitioningToReset(true);
+      toast({
+        title: "Ending Episode Recording",
+        description: `Moving to reset phase for episode ${backendStatus.current_episode}...`,
+      });
+    } else if (currentPhase === "resetting") {
+      console.log("🎯 Setting transitioningToNext = true");
+      setTransitioningToNext(true);
+      toast({
+        title: "Reset Complete",
+        description: `Moving to next episode...`,
+      });
+    }
+
     try {
       const response = await fetchWithHeaders(
         `${baseUrl}/recording-exit-early`,
@@ -228,19 +224,12 @@ const Recording = () => {
       const data = await response.json();
 
       if (response.ok) {
-        const currentPhase = backendStatus.current_phase;
-        if (currentPhase === "recording") {
-          toast({
-            title: "Episode Recording Ended",
-            description: `Episode ${backendStatus.current_episode} recording completed. Moving to reset phase.`,
-          });
-        } else if (currentPhase === "resetting") {
-          toast({
-            title: "Reset Complete",
-            description: `Moving to next episode...`,
-          });
-        }
+        // ✅ SUCCESS: Don't clear transition states here - let them persist until backend phase changes
+        // The transition states will be cleared when the backend status actually updates to the new phase
       } else {
+        // Clear transition states on error
+        setTransitioningToReset(false);
+        setTransitioningToNext(false);
         toast({
           title: "Error",
           description: data.message,
@@ -248,6 +237,9 @@ const Recording = () => {
         });
       }
     } catch (error) {
+      // Clear transition states on error
+      setTransitioningToReset(false);
+      setTransitioningToNext(false);
       toast({
         title: "Connection Error",
         description: "Could not connect to the backend server.",
@@ -359,12 +351,20 @@ const Recording = () => {
   const sessionElapsedTime = backendStatus.session_elapsed_seconds || 0;
 
   const getPhaseTitle = () => {
+    // 🎯 IMMEDIATE FEEDBACK: Show transition titles
+    if (transitioningToReset) return "Transitioning to Reset";
+    if (transitioningToNext) return "Moving to Next Episode";
+
     if (currentPhase === "recording") return "Episode Recording Time";
     if (currentPhase === "resetting") return "Environment Reset Time";
     return "Phase Time";
   };
 
   const getStatusText = () => {
+    // 🎯 IMMEDIATE FEEDBACK: Show transition states
+    if (transitioningToReset) return "MOVING TO RESET PHASE";
+    if (transitioningToNext) return "MOVING TO NEXT EPISODE";
+
     if (currentPhase === "recording")
       return `RECORDING EPISODE ${currentEpisode}`;
     if (currentPhase === "resetting") return "RESET THE ENVIRONMENT";
@@ -373,6 +373,10 @@ const Recording = () => {
   };
 
   const getStatusColor = () => {
+    // 🎯 IMMEDIATE FEEDBACK: Show transition state colors
+    if (transitioningToReset) return "text-blue-400"; // Blue for transition
+    if (transitioningToNext) return "text-blue-400"; // Blue for transition
+
     if (currentPhase === "recording") return "text-red-400";
     if (currentPhase === "resetting") return "text-orange-400";
     if (currentPhase === "preparing") return "text-yellow-400";
@@ -380,6 +384,10 @@ const Recording = () => {
   };
 
   const getDotColor = () => {
+    // 🎯 IMMEDIATE FEEDBACK: Show transition state dots with animation
+    if (transitioningToReset) return "bg-blue-500 animate-pulse"; // Blue pulsing for transition
+    if (transitioningToNext) return "bg-blue-500 animate-pulse"; // Blue pulsing for transition
+
     if (currentPhase === "recording") return "bg-red-500 animate-pulse";
     if (currentPhase === "resetting") return "bg-orange-500 animate-pulse";
     if (currentPhase === "preparing") return "bg-yellow-500";
@@ -497,11 +505,23 @@ const Recording = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Button
                   onClick={handleExitEarly}
-                  disabled={!backendStatus.available_controls.exit_early}
+                  disabled={
+                    !backendStatus.available_controls.exit_early ||
+                    transitioningToReset
+                  }
                   className="bg-green-500 hover:bg-green-600 text-white font-semibold py-4 text-lg disabled:opacity-50"
                 >
-                  <SkipForward className="w-5 h-5 mr-2" />
-                  End Episode
+                  {transitioningToReset ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      Moving to Reset...
+                    </>
+                  ) : (
+                    <>
+                      <SkipForward className="w-5 h-5 mr-2" />
+                      End Episode
+                    </>
+                  )}
                 </Button>
 
                 <Button
@@ -529,11 +549,23 @@ const Recording = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Button
                   onClick={handleExitEarly}
-                  disabled={!backendStatus.available_controls.exit_early}
+                  disabled={
+                    !backendStatus.available_controls.exit_early ||
+                    transitioningToNext
+                  }
                   className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-6 text-xl disabled:opacity-50"
                 >
-                  <Play className="w-6 h-6 mr-2" />
-                  Continue to Next Phase
+                  {transitioningToNext ? (
+                    <>
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-2"></div>
+                      Moving to Next Episode...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-6 h-6 mr-2" />
+                      Continue to Next Phase
+                    </>
+                  )}
                 </Button>
 
                 <Button
@@ -615,16 +647,6 @@ const Recording = () => {
               )}
             </div>
           </div>
-
-          {/* Phone Camera Feed - takes up 1 column */}
-          {phoneCameraConnected && (
-            <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-400 mb-3">
-                Phone Camera
-              </h3>
-              <PhoneCameraFeed sessionId={sessionId} />
-            </div>
-          )}
         </div>
 
         {/* URDF Viewer Section */}
