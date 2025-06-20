@@ -19,6 +19,8 @@ import {
 import { Settings } from "lucide-react";
 import PortDetectionModal from "@/components/ui/PortDetectionModal";
 import PortDetectionButton from "@/components/ui/PortDetectionButton";
+import CameraDetectionModal from "@/components/ui/CameraDetectionModal";
+import CameraDetectionButton from "@/components/ui/CameraDetectionButton";
 import { useApi } from "@/contexts/ApiContext";
 import { useAutoSave } from "@/hooks/useAutoSave";
 
@@ -61,6 +63,90 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
   const [detectionRobotType, setDetectionRobotType] = useState<
     "leader" | "follower"
   >("leader");
+  const [showCameraDetection, setShowCameraDetection] = useState(false);
+  const [cameraConfig, setCameraConfig] = useState<any>({});
+
+  const handlePortDetection = (robotType: "leader" | "follower") => {
+    setDetectionRobotType(robotType);
+    setShowPortDetection(true);
+  };
+
+  const handlePortDetected = (port: string) => {
+    if (detectionRobotType === "leader") {
+      setLeaderPort(port);
+    } else {
+      setFollowerPort(port);
+    }
+  };
+
+  // Enhanced port change handlers that save automatically
+  const handleLeaderPortChange = (value: string) => {
+    setLeaderPort(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSavePort("leader", value);
+  };
+
+  const handleFollowerPortChange = (value: string) => {
+    setFollowerPort(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSavePort("follower", value);
+  };
+
+  // Enhanced config change handlers that save automatically
+  const handleLeaderConfigChange = (value: string) => {
+    setLeaderConfig(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSaveConfig("leader", value);
+  };
+
+  const handleFollowerConfigChange = (value: string) => {
+    setFollowerConfig(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSaveConfig("follower", value);
+  };
+
+  const handleCameraSelected = (cameraData: any) => {
+    setCameraConfig(prev => ({
+      ...prev,
+      [cameraData.name]: cameraData.config
+    }));
+  };
+
+  const loadCameraConfig = async () => {
+    try {
+      const response = await fetchWithHeaders(`${baseUrl}/cameras/config`);
+      const data = await response.json();
+      
+      if (data.status === "success" && data.camera_config) {
+        setCameraConfig(data.camera_config.cameras || {});
+      }
+    } catch (error) {
+      console.error("Error loading camera config:", error);
+    }
+  };
+
+  const handleRemoveCamera = async (cameraName: string) => {
+    try {
+      const response = await fetchWithHeaders(`${baseUrl}/cameras/config/${encodeURIComponent(cameraName)}`, {
+        method: "DELETE",
+      });
+      
+      const result = await response.json();
+      
+      if (result.status === "success") {
+        setCameraConfig(prev => {
+          const newConfig = { ...prev };
+          delete newConfig[cameraName];
+          return newConfig;
+        });
+        console.log(`Camera "${cameraName}" removed successfully`);
+      } else {
+        console.error("Error removing camera:", result.message);
+      }
+    } catch (error) {
+      console.error("Error removing camera:", error);
+    }
+  };
 
   // Load saved ports and configurations on component mount
   useEffect(() => {
@@ -101,6 +187,9 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
         if (followerConfigData.status === "success" && followerConfigData.default_config) {
           setFollowerConfig(followerConfigData.default_config);
         }
+
+        // Load camera configuration
+        await loadCameraConfig();
       } catch (error) {
         console.error("Error loading saved data:", error);
       }
@@ -111,47 +200,9 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
     }
   }, [open, setLeaderPort, setFollowerPort, setLeaderConfig, setFollowerConfig, leaderConfigs, followerConfigs, baseUrl, fetchWithHeaders]);
 
-  const handlePortDetection = (robotType: "leader" | "follower") => {
-    setDetectionRobotType(robotType);
-    setShowPortDetection(true);
-  };
-
-  const handlePortDetected = (port: string) => {
-    if (detectionRobotType === "leader") {
-      setLeaderPort(port);
-    } else {
-      setFollowerPort(port);
-    }
-  };
-
-  // Enhanced port change handlers that save automatically
-  const handleLeaderPortChange = (value: string) => {
-    setLeaderPort(value);
-    // Auto-save with debouncing to avoid excessive API calls
-    debouncedSavePort("leader", value);
-  };
-
-  const handleFollowerPortChange = (value: string) => {
-    setFollowerPort(value);
-    // Auto-save with debouncing to avoid excessive API calls
-    debouncedSavePort("follower", value);
-  };
-
-  // Enhanced config change handlers that save automatically
-  const handleLeaderConfigChange = (value: string) => {
-    setLeaderConfig(value);
-    // Auto-save with debouncing to avoid excessive API calls
-    debouncedSaveConfig("leader", value);
-  };
-
-  const handleFollowerConfigChange = (value: string) => {
-    setFollowerConfig(value);
-    // Auto-save with debouncing to avoid excessive API calls
-    debouncedSaveConfig("follower", value);
-  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[600px] p-8">
+      <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[600px] max-h-[90vh] overflow-y-auto p-8">
         <DialogHeader>
           <div className="flex justify-center items-center gap-4 mb-4">
             <Settings className="w-8 h-8 text-yellow-500" />
@@ -274,6 +325,50 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
             </div>
           </div>
 
+          <div className="space-y-4 border-t border-gray-700 pt-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white flex-1">
+                Camera Configuration
+              </h3>
+              <CameraDetectionButton
+                onClick={() => setShowCameraDetection(true)}
+              />
+            </div>
+            
+            {Object.keys(cameraConfig).length > 0 ? (
+              <div className="space-y-2">
+                <div className="text-sm text-gray-400 mb-2">
+                  Configured Cameras ({Object.keys(cameraConfig).length})
+                </div>
+                {Object.entries(cameraConfig).map(([name, config]: [string, any]) => (
+                  <div
+                    key={name}
+                    className="flex items-center justify-between p-3 bg-gray-800 rounded-lg border border-gray-700"
+                  >
+                    <div>
+                      <div className="text-white font-medium">{name}</div>
+                      <div className="text-xs text-gray-400">
+                        {config.type} - {config.width}x{config.height} @ {config.fps}fps
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleRemoveCamera(name)}
+                      className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-gray-400 text-sm italic">
+                No cameras configured. Click the camera icon to detect and configure cameras.
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
             <Button
               onClick={onStart}
@@ -298,6 +393,12 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
         onOpenChange={setShowPortDetection}
         robotType={detectionRobotType}
         onPortDetected={handlePortDetected}
+      />
+
+      <CameraDetectionModal
+        open={showCameraDetection}
+        onOpenChange={setShowCameraDetection}
+        onCameraSelected={handleCameraSelected}
       />
     </Dialog>
   );

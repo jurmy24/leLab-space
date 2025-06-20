@@ -18,7 +18,7 @@ import Training from "@/pages/Training";
 import ReplayDataset from "@/pages/ReplayDataset";
 import EditDataset from "@/pages/EditDataset";
 import Upload from "@/pages/Upload";
-
+import PhoneCamera from "@/pages/PhoneCamera";
 import NotFound from "@/pages/NotFound";
 import "./App.css";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
@@ -44,7 +44,7 @@ function App() {
                     <Route path="/calibration" element={<Calibration />} />
                     <Route path="/edit-dataset" element={<EditDataset />} />
                     <Route path="/replay-dataset" element={<ReplayDataset />} />
-
+                    <Route path="/phone-camera" element={<PhoneCamera />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                   <Toaster />
