@@ -24,7 +24,6 @@ import {
   Loader2,
   Play,
   Square,
-  RefreshCw,
   Trash2,
   List,
 } from "lucide-react";
@@ -36,11 +35,17 @@ import { useApi } from "@/contexts/ApiContext";
 
 interface CalibrationStatus {
   calibration_active: boolean;
-  status: string; // "idle", "connecting", "calibrating", "completed", "error", "stopping"
+  status: string; // "idle", "connecting", "homing", "recording", "completed", "error", "stopping"
   device_type: string | null;
   error: string | null;
   message: string;
-  console_output: string;
+  step: number; // Current calibration step
+  total_steps: number; // Total number of calibration steps
+  current_positions: Record<string, number> | null;
+  recorded_ranges: Record<
+    string,
+    { min: number; max: number; current: number }
+  > | null;
 }
 
 interface CalibrationRequest {
@@ -91,7 +96,10 @@ const Calibration = () => {
       device_type: null,
       error: null,
       message: "",
-      console_output: "",
+      step: 0,
+      total_steps: 2,
+      current_positions: null,
+      recorded_ranges: null,
     }
   );
   const [isPolling, setIsPolling] = useState(false);
@@ -104,13 +112,37 @@ const Calibration = () => {
       const response = await fetchWithHeaders(`${baseUrl}/calibration-status`);
       if (response.ok) {
         const status = await response.json();
+        const previousStatus = calibrationStatus.status;
+
+        // Debug logging
+        console.log("Status update:", {
+          previousStatus,
+          newStatus: status.status,
+          calibrationActive: status.calibration_active,
+          polling: isPolling,
+        });
+
         setCalibrationStatus(status);
 
-        // Stop polling if calibration is completed or error
+        // If calibration just completed successfully, refresh the configs list
+        if (
+          previousStatus !== "completed" &&
+          status.status === "completed" &&
+          !status.calibration_active &&
+          deviceType
+        ) {
+          console.log("Calibration completed - refreshing available configs");
+          loadAvailableConfigs(deviceType);
+        }
+
+        // Stop polling if calibration is completed, error, or stopped (idle)
         if (
           !status.calibration_active &&
-          (status.status === "completed" || status.status === "error")
+          (status.status === "completed" ||
+            status.status === "error" ||
+            status.status === "idle")
         ) {
+          console.log("Stopping polling due to status:", status.status);
           setIsPolling(false);
         }
       }
@@ -181,7 +213,11 @@ const Calibration = () => {
           title: "Calibration Stopped",
           description: "Calibration has been stopped",
         });
-        setIsPolling(false);
+
+        // Force a status check after stopping
+        setTimeout(() => {
+          pollStatus();
+        }, 500);
       } else {
         toast({
           title: "Error",
@@ -197,23 +233,6 @@ const Calibration = () => {
         variant: "destructive",
       });
     }
-  };
-
-  // Reset form
-  const handleReset = () => {
-    setDeviceType("robot");
-    setPort("");
-    setConfigFile("");
-    setAvailableConfigs([]);
-    setCalibrationStatus({
-      calibration_active: false,
-      status: "idle",
-      device_type: null,
-      error: null,
-      message: "",
-      console_output: "",
-    });
-    setIsPolling(false);
   };
 
   // Load available configs for the selected device type
@@ -281,38 +300,37 @@ const Calibration = () => {
     }
   };
 
-  // Send Enter to calibration process
-  const handleSendEnter = async () => {
+  // Complete current calibration step
+  const handleCompleteStep = async () => {
     if (!calibrationStatus.calibration_active) return;
 
-    console.log("🔵 Enter button clicked - sending input...");
-
     try {
-      const response = await fetchWithHeaders(`${baseUrl}/calibration-input`, {
-        method: "POST",
-        body: JSON.stringify({ input: "\n" }), // Send actual newline character
-      });
+      const response = await fetchWithHeaders(
+        `${baseUrl}/complete-calibration-step`,
+        {
+          method: "POST",
+        }
+      );
 
       const data = await response.json();
-      console.log("🔵 Server response:", data);
 
       if (data.success) {
         toast({
-          title: "Enter Sent",
-          description: "Enter key sent to calibration process",
+          title: "Step Completed",
+          description: data.message,
         });
       } else {
         toast({
-          title: "Input Failed",
-          description: data.message || "Could not send Enter",
+          title: "Step Failed",
+          description: data.message || "Could not complete step",
           variant: "destructive",
         });
       }
     } catch (error) {
-      console.error("🔴 Error sending Enter:", error);
+      console.error("Error completing step:", error);
       toast({
         title: "Error",
-        description: "Could not send Enter to calibration",
+        description: "Could not complete calibration step",
         variant: "destructive",
       });
     }
@@ -325,17 +343,16 @@ const Calibration = () => {
     let interval: NodeJS.Timeout;
 
     if (isPolling) {
-      // Use ultra-fast polling during active calibration for real-time updates
-      const pollInterval =
-        calibrationStatus.status === "calibrating" ? 25 : 100;
-      interval = setInterval(pollStatus, pollInterval); // 25ms during calibration, 100ms otherwise
+      // Use fast polling during active calibration for real-time updates
+      const pollInterval = calibrationStatus.calibration_active ? 100 : 200;
+      interval = setInterval(pollStatus, pollInterval);
       pollStatus(); // Initial poll
     }
 
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isPolling, calibrationStatus.status]);
+  }, [isPolling, calibrationStatus.calibration_active]);
 
   // Load configs when device type changes
   useEffect(() => {
@@ -345,20 +362,6 @@ const Calibration = () => {
       setAvailableConfigs([]);
     }
   }, [deviceType]);
-
-  // Auto-scroll console to bottom when output changes (with debounce)
-  useEffect(() => {
-    if (consoleRef.current && calibrationStatus.console_output) {
-      // Small delay to ensure DOM is updated before scrolling
-      const timeoutId = setTimeout(() => {
-        if (consoleRef.current) {
-          consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
-        }
-      }, 10);
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [calibrationStatus.console_output]);
 
   // Load default port when device type changes
   useEffect(() => {
@@ -412,11 +415,17 @@ const Calibration = () => {
           icon: <Loader2 className="w-4 h-4 animate-spin" />,
           text: "Connecting",
         };
-      case "calibrating":
+      case "homing":
         return {
           color: "bg-blue-500",
           icon: <Activity className="w-4 h-4" />,
-          text: "Calibrating",
+          text: "Setting Home Position",
+        };
+      case "recording":
+        return {
+          color: "bg-purple-500",
+          icon: <Activity className="w-4 h-4" />,
+          text: "Recording Ranges",
         };
       case "completed":
         return {
@@ -446,13 +455,6 @@ const Calibration = () => {
   };
 
   const statusDisplay = getStatusDisplay();
-
-  // Memoize console output to prevent unnecessary re-renders
-  const memoizedConsoleOutput = useMemo(() => {
-    return (
-      calibrationStatus.console_output || "Waiting for calibration output..."
-    );
-  }, [calibrationStatus.console_output]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-4">
@@ -633,16 +635,6 @@ const Calibration = () => {
                     Stop Calibration
                   </Button>
                 )}
-
-                <Button
-                  onClick={handleReset}
-                  variant="outline"
-                  className="w-full border-slate-600 hover:bg-slate-700 rounded-full py-6 text-lg"
-                  disabled={calibrationStatus.calibration_active}
-                >
-                  <RefreshCw className="w-5 h-5 mr-2" />
-                  Reset
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -667,52 +659,73 @@ const Calibration = () => {
                 </Badge>
               </div>
 
-              {calibrationStatus.device_type && (
-                <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-md">
-                  <span className="text-slate-300">Device:</span>
-                  <span className="text-white capitalize">
-                    {calibrationStatus.device_type}
-                  </span>
-                </div>
-              )}
+              {/* Live Position Data (during recording) */}
+              {calibrationStatus.status === "recording" &&
+                calibrationStatus.recorded_ranges && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-purple-400" />
+                      <span className="text-sm font-medium text-slate-300">
+                        Live Position Data
+                      </span>
+                    </div>
+                    <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                      <div className="space-y-3">
+                        {Object.entries(calibrationStatus.recorded_ranges).map(
+                          ([motor, range]) => {
+                            // Calculate progress percentage (current position relative to min/max range)
+                            const totalRange = range.max - range.min;
+                            const currentOffset = range.current - range.min;
+                            const progressPercent =
+                              totalRange > 0
+                                ? (currentOffset / totalRange) * 100
+                                : 50;
 
-              {/* Calibration Console */}
-              {calibrationStatus.calibration_active && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Settings className="w-4 h-4 text-slate-400" />
-                    <span className="text-sm font-medium text-slate-300">
-                      Calibration Console
-                    </span>
-                  </div>
-
-                  {/* Console Output */}
-                  <div className="bg-black rounded-lg p-4 font-mono text-sm border border-slate-700">
-                    <div
-                      ref={consoleRef}
-                      className="text-green-400 h-80 overflow-y-auto whitespace-pre-wrap"
-                    >
-                      {memoizedConsoleOutput}
+                            return (
+                              <div key={motor} className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-white font-semibold text-sm">
+                                    {motor}
+                                  </span>
+                                  <span className="text-slate-300 text-xs font-mono">
+                                    {range.current}
+                                  </span>
+                                </div>
+                                <div className="relative">
+                                  {/* Progress bar background */}
+                                  <div className="w-full bg-slate-700 rounded-full h-3">
+                                    {/* Min/Max range bar */}
+                                    <div
+                                      className="bg-slate-600 h-3 rounded-full relative"
+                                      style={{ width: "100%" }}
+                                    >
+                                      {/* Current position indicator */}
+                                      <div
+                                        className="absolute top-0 w-1 h-3 bg-yellow-400 rounded-full transition-all duration-100"
+                                        style={{
+                                          left: `${Math.max(
+                                            0,
+                                            Math.min(100, progressPercent)
+                                          )}%`,
+                                          transform: "translateX(-50%)",
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                  {/* Min/Max labels */}
+                                  <div className="flex justify-between text-xs text-slate-400 mt-1">
+                                    <span>{range.min}</span>
+                                    <span>{range.max}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
                     </div>
                   </div>
-
-                  {/* Enter Button */}
-                  <div className="flex justify-center">
-                    <Button
-                      onClick={handleSendEnter}
-                      disabled={!calibrationStatus.calibration_active}
-                      className="bg-blue-600 hover:bg-blue-700 px-8 py-2 rounded-full"
-                    >
-                      Press Enter
-                    </Button>
-                  </div>
-
-                  <div className="text-xs text-slate-400 text-center">
-                    Click the button above to send Enter to the calibration
-                    process
-                  </div>
-                </div>
-              )}
+                )}
 
               {/* Status Messages */}
               {calibrationStatus.status === "connecting" && (
@@ -724,13 +737,50 @@ const Calibration = () => {
                 </Alert>
               )}
 
-              {calibrationStatus.status === "calibrating" && (
-                <Alert className="bg-blue-900/50 border-blue-700 text-blue-200">
-                  <Activity className="h-4 w-4" />
-                  <AlertDescription>
-                    Calibration in progress. Follow device instructions.
-                  </AlertDescription>
-                </Alert>
+              {calibrationStatus.status === "homing" && (
+                <div className="space-y-3">
+                  <Alert className="bg-blue-900/50 border-blue-700 text-blue-200">
+                    <Activity className="h-4 w-4" />
+                    <AlertDescription>
+                      Move the device to the middle position of its range, then
+                      click "Ready".
+                    </AlertDescription>
+                  </Alert>
+                  <div className="flex justify-center">
+                    <Button
+                      onClick={handleCompleteStep}
+                      disabled={!calibrationStatus.calibration_active}
+                      className="bg-green-600 hover:bg-green-700 px-8 py-3 rounded-full"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Ready
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {calibrationStatus.status === "recording" && (
+                <div className="space-y-3">
+                  <Alert className="bg-purple-900/50 border-purple-700 text-purple-200">
+                    <Activity className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Important:</strong> Move EACH joint from its
+                      minimum to maximum position to record full range. Watch
+                      the min/max values change in the live data above. Ensure
+                      all joints have significant range before finishing.
+                    </AlertDescription>
+                  </Alert>
+                  <div className="flex justify-center">
+                    <Button
+                      onClick={handleCompleteStep}
+                      disabled={!calibrationStatus.calibration_active}
+                      className="bg-green-600 hover:bg-green-700 px-8 py-3 rounded-full"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Calibration End
+                    </Button>
+                  </div>
+                </div>
               )}
 
               {calibrationStatus.status === "completed" && (
@@ -752,19 +802,36 @@ const Calibration = () => {
                   </Alert>
                 )}
 
-              {/* Instructions */}
+              {/* Calibration Video */}
               <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
-                <h4 className="font-semibold mb-2 text-slate-200">
-                  Instructions:
+                <h4 className="font-semibold mb-3 text-slate-200">
+                  Calibration Demo:
                 </h4>
-                <ol className="text-sm text-slate-300 space-y-1 list-decimal list-inside">
-                  <li>Select device type.</li>
-                  <li>Enter the correct port.</li>
-                  <li>Provide a name for the new calibration config.</li>
-                  <li>Move the robot to a middle position.</li>
-                  <li>Click "Start Calibration" & follow device prompts.</li>
-                  <li>Move each motor to its limits on both sides.</li>
-                </ol>
+                <div className="relative rounded-lg overflow-hidden bg-slate-800">
+                  <video
+                    className="w-full h-auto rounded-md"
+                    controls
+                    preload="auto"
+                    muted
+                  >
+                    <source
+                      src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/lerobot/calibrate_so101_2.mp4"
+                      type="video/mp4"
+                    />
+                    <p className="text-slate-400 text-sm text-center py-4">
+                      Your browser does not support the video tag.
+                      <br />
+                      <a
+                        href="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/lerobot/calibrate_so101_2.mp4"
+                        className="text-blue-400 hover:text-blue-300 underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Click here to view the calibration video
+                      </a>
+                    </p>
+                  </video>
+                </div>
               </div>
             </CardContent>
           </Card>
