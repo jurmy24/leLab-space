@@ -359,6 +359,13 @@ const Landing = () => {
 
   const actions: Action[] = [
     {
+      title: "Calibration",
+      description: "Calibrate robot arm positions.",
+      handler: handleCalibrationClick,
+      color: "bg-indigo-500 hover:bg-indigo-600",
+      isWorkInProgress: false,
+    },
+    {
       title: "Teleoperation",
       description: "Control the robot arm in real-time.",
       handler: handleTeleoperationClick,
@@ -371,17 +378,10 @@ const Landing = () => {
       color: "bg-red-500 hover:bg-red-600",
     },
     {
-      title: "Direct Follower Control",
-      description: "Control robot arm with mouse movements.",
-      handler: handleDirectFollowerClick,
-      color: "bg-blue-500 hover:bg-blue-600",
-      isWorkInProgress: true,
-    },
-    {
-      title: "Calibration",
-      description: "Calibrate robot arm positions.",
-      handler: handleCalibrationClick,
-      color: "bg-indigo-500 hover:bg-indigo-600",
+      title: "Replay Dataset",
+      description: "Replay and analyze recorded datasets.",
+      handler: handleReplayDatasetClick,
+      color: "bg-purple-500 hover:bg-purple-600",
       isWorkInProgress: true,
     },
     {
@@ -392,10 +392,10 @@ const Landing = () => {
       isWorkInProgress: true,
     },
     {
-      title: "Replay Dataset",
-      description: "Replay and analyze recorded datasets.",
-      handler: handleReplayDatasetClick,
-      color: "bg-purple-500 hover:bg-purple-600",
+      title: "Direct Follower Control",
+      description: "Control robot arm with mouse movements.",
+      handler: handleDirectFollowerClick,
+      color: "bg-blue-500 hover:bg-blue-600",
       isWorkInProgress: true,
     },
   ];
