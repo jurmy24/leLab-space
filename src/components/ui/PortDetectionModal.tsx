@@ -55,10 +55,9 @@ const PortDetectionModal: React.FC<PortDetectionModalProps> = ({
 
       if (data.status === "success") {
         setPortsBeforeDisconnect(data.data.ports_before);
-        // Give user time to disconnect
-        setTimeout(() => {
-          detectPortAfterDisconnect(data.data.ports_before);
-        }, 3000); // 3 second delay to allow disconnection
+        // Backend polls for up to 15s waiting for the user to unplug —
+        // call immediately, the request stays open until a port disappears or timeout.
+        detectPortAfterDisconnect(data.data.ports_before);
       } else {
         throw new Error(data.message || "Failed to start port detection");
       }

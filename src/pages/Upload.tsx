@@ -159,10 +159,24 @@ const Upload = () => {
           description: `Dataset ${datasetInfo.dataset_repo_id} has been uploaded to HuggingFace Hub.`,
         });
       } else {
+        const fallback = "Failed to upload dataset to HuggingFace Hub.";
         toast({
           title: "Upload Failed",
-          description:
-            data.message || "Failed to upload dataset to HuggingFace Hub.",
+          description: data.docs_url ? (
+            <span>
+              {data.message || fallback}{" "}
+              <a
+                href={data.docs_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline font-medium"
+              >
+                Open setup guide
+              </a>
+            </span>
+          ) : (
+            data.message || fallback
+          ),
           variant: "destructive",
         });
       }

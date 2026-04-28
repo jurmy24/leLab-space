@@ -34,6 +34,7 @@ interface BackendStatus {
   phase_time_limit_s?: number;
   session_elapsed_seconds?: number;
   session_ended?: boolean;
+  dataset_repo_id?: string;
   available_controls: {
     stop_recording: boolean;
     exit_early: boolean;
@@ -118,7 +119,8 @@ const Recording = () => {
             ) {
               // Navigate to upload window with dataset info
               const datasetInfo = {
-                dataset_repo_id: recordingConfig.dataset_repo_id,
+                dataset_repo_id:
+                  status.dataset_repo_id || recordingConfig.dataset_repo_id,
                 single_task: recordingConfig.single_task,
                 num_episodes: recordingConfig.num_episodes,
                 saved_episodes: status.saved_episodes || 0,
@@ -296,7 +298,8 @@ const Recording = () => {
 
       // Navigate to upload window with current dataset info
       const datasetInfo = {
-        dataset_repo_id: recordingConfig.dataset_repo_id,
+        dataset_repo_id:
+          backendStatus?.dataset_repo_id || recordingConfig.dataset_repo_id,
         single_task: recordingConfig.single_task,
         num_episodes: recordingConfig.num_episodes,
         saved_episodes: backendStatus?.saved_episodes || 0,
