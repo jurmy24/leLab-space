@@ -18,6 +18,7 @@ import Training from "@/pages/Training";
 import ReplayDataset from "@/pages/ReplayDataset";
 import EditDataset from "@/pages/EditDataset";
 import Upload from "@/pages/Upload";
+import RemoteCamera from "@/pages/RemoteCamera";
 
 import NotFound from "@/pages/NotFound";
 import "./App.css";
@@ -44,6 +45,10 @@ function App() {
                     <Route path="/calibration" element={<Calibration />} />
                     <Route path="/edit-dataset" element={<EditDataset />} />
                     <Route path="/replay-dataset" element={<ReplayDataset />} />
+                    <Route
+                      path="/remote_cam/:sessionId"
+                      element={<RemoteCamera />}
+                    />
 
                     <Route path="*" element={<NotFound />} />
                   </Routes>

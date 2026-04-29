@@ -9,9 +9,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Camera, Plus, X, Video, VideoOff } from "lucide-react";
+import { Camera, Plus, X, Video, VideoOff, Smartphone } from "lucide-react";
 import { useApi } from "@/contexts/ApiContext";
 import { useToast } from "@/hooks/use-toast";
+import { useNetworkAddress } from "@/hooks/useNetworkAddress";
+import { QRCodeDisplay } from "@/components/ui/QRCodeDisplay";
+import io from "socket.io-client";
 
 export interface CameraConfig {
   id: string;
@@ -22,6 +25,7 @@ export interface CameraConfig {
   width: number;
   height: number;
   fps?: number;
+  session_id?: string; // For phone cameras - used to generate QR code URLs
 }
 
 interface CameraConfigurationProps {
@@ -30,11 +34,19 @@ interface CameraConfigurationProps {
   releaseStreamsRef?: React.MutableRefObject<(() => void) | null>; // Ref to expose stream release function
 }
 
+interface PhoneStreamData {
+  streamId: string;
+  frameData: string;
+  timestamp: number;
+  isActive: boolean;
+}
+
 interface AvailableCamera {
   index: number;
   deviceId: string;
   name: string;
   available: boolean;
+  isPhone?: boolean; // Special flag for phone cameras
 }
 
 const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
@@ -44,6 +56,7 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
 }) => {
   const { baseUrl, fetchWithHeaders } = useApi();
   const { toast } = useToast();
+  const networkAddress = useNetworkAddress();
 
   const [availableCameras, setAvailableCameras] = useState<AvailableCamera[]>(
     []
@@ -54,11 +67,113 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
   const [cameraStreams, setCameraStreams] = useState<Map<string, MediaStream>>(
     new Map()
   );
+  const [phoneStreams, setPhoneStreams] = useState<
+    Map<string, PhoneStreamData>
+  >(new Map());
+  const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
   // Fetch available cameras on component mount
   useEffect(() => {
     fetchAvailableCameras();
+    setupPhoneStreamConnection();
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
   }, []);
+
+  // Log network address detection results for testing
+  useEffect(() => {
+    if (!networkAddress.loading) {
+      console.log("🌐 Network Address Detection Results:");
+      console.log("  📍 Address for QR codes:", networkAddress.address);
+      console.log("  🏠 Is localhost:", networkAddress.isLocalhost);
+      console.log("  📶 Local network IP:", networkAddress.localNetworkIP);
+      console.log("  ❌ Error:", networkAddress.error);
+
+      if (networkAddress.isLocalhost && networkAddress.localNetworkIP) {
+        console.log("✅ Phone access URL ready:", networkAddress.address);
+      } else if (networkAddress.isLocalhost && !networkAddress.localNetworkIP) {
+        console.warn(
+          "⚠️ Localhost detected but no network IP found. QR codes will use localhost."
+        );
+      } else {
+        console.log("🌐 Using current domain/IP for phone access.");
+      }
+    }
+  }, [networkAddress]);
+
+  const setupPhoneStreamConnection = () => {
+    const hostname = window.location.hostname;
+    const serverUrl = `http://${hostname}:8000`;
+
+    console.log("📱 Setting up phone stream connection to:", serverUrl);
+
+    socketRef.current = io(serverUrl, {
+      transports: ["polling"],
+      timeout: 15000,
+      forceNew: true,
+      upgrade: false,
+    });
+
+    socketRef.current.on("connect", () => {
+      console.log("📱 Connected to WebRTC backend for phone streams");
+    });
+
+    socketRef.current.on("disconnect", () => {
+      console.log("📱 Disconnected from WebRTC backend");
+    });
+
+    // Listen for phone stream frames
+    socketRef.current.on(
+      "stream-frame",
+      (data: {
+        webrtcId: string;
+        streamId: string;
+        frameData: string;
+        timestamp: number;
+      }) => {
+        console.log("📹 Received phone stream frame for:", data.webrtcId);
+
+        setPhoneStreams((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(data.webrtcId, {
+            streamId: data.streamId,
+            frameData: data.frameData,
+            timestamp: data.timestamp,
+            isActive: true,
+          });
+          return newMap;
+        });
+      }
+    );
+
+    // Listen for stream status updates
+    socketRef.current.on(
+      "stream-started",
+      (data: { webrtcId: string; streamId: string; metadata: object }) => {
+        console.log("📹 Phone stream started:", data.webrtcId);
+        toast({
+          title: "Phone Camera Connected",
+          description: `Stream from ${data.webrtcId} is now active`,
+        });
+      }
+    );
+
+    socketRef.current.on("phone-connected", (data: { webrtcId: string }) => {
+      console.log("📱 Phone connected to session:", data.webrtcId);
+      toast({
+        title: "Phone Connected",
+        description: `Phone joined session ${data.webrtcId}`,
+      });
+    });
+
+    socketRef.current.on("connect_error", (error) => {
+      console.error("📱 Phone stream connection error:", error);
+    });
+  };
 
   const fetchAvailableCameras = async () => {
     console.log("🚀 fetchAvailableCameras() called");
@@ -74,7 +189,18 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
       if (response.ok) {
         const data = await response.json();
         console.log("📡 Backend camera data received:", data);
-        setAvailableCameras(data.cameras || []);
+
+        // Add phone camera to backend data and set it
+        const backendCameras = data.cameras || [];
+        const phoneCamera: AvailableCamera = {
+          index: -1, // Special index for phone cameras
+          deviceId: "phone",
+          name: "Phone",
+          available: true,
+          isPhone: true,
+        };
+        console.log("📱 Adding special Phone camera option to backend cameras");
+        setAvailableCameras([...backendCameras, phoneCamera]);
 
         // Always also try browser detection to get device IDs
         console.log("🔄 Also running browser detection for device IDs...");
@@ -133,10 +259,29 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
         available: true,
       }));
 
+      // Always add the special "Phone" camera option at the end
+      const phoneCamera: AvailableCamera = {
+        index: -1, // Special index for phone cameras
+        deviceId: "phone",
+        name: "Phone",
+        available: true,
+        isPhone: true,
+      };
+
       console.log("🎬 Browser cameras with indices mapped:", detectedCameras);
-      setAvailableCameras(detectedCameras);
+      console.log("📱 Adding special Phone camera option");
+      setAvailableCameras([...detectedCameras, phoneCamera]);
     } catch (error) {
       console.error("Error detecting browser cameras:", error);
+      // Even if camera detection fails, still add the Phone option
+      const phoneCamera: AvailableCamera = {
+        index: -1,
+        deviceId: "phone",
+        name: "Phone",
+        available: true,
+        isPhone: true,
+      };
+      setAvailableCameras([phoneCamera]);
       toast({
         title: "Camera Detection Failed",
         description:
@@ -146,7 +291,45 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
     }
   };
 
+  const createPhoneSession = (cameraConfig: CameraConfig) => {
+    if (!socketRef.current || cameraConfig.type !== "phone") {
+      console.warn(
+        "Cannot create phone session - socket not connected or not phone camera"
+      );
+      return;
+    }
+
+    console.log(
+      "📱 Creating phone session for:",
+      cameraConfig.name,
+      cameraConfig.device_id
+    );
+
+    // Emit create session event to backend
+    socketRef.current.emit("create_session", {
+      webrtcId: cameraConfig.device_id,
+    });
+
+    toast({
+      title: "Phone Session Created",
+      description: `Waiting for phone to connect to ${cameraConfig.name}`,
+    });
+  };
+
   const startCameraPreview = async (cameraConfig: CameraConfig) => {
+    // Phone cameras don't have real device streams
+    if (cameraConfig.type === "phone") {
+      console.log(
+        "📱 Phone camera detected, skipping preview:",
+        cameraConfig.name
+      );
+      toast({
+        title: "Phone Camera Added",
+        description: `${cameraConfig.name} is ready. Use the remote camera interface to connect.`,
+      });
+      return null;
+    }
+
     try {
       console.log(
         "🎥 Starting camera preview for:",
@@ -166,10 +349,11 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
         },
       };
 
-      // Only add deviceId if it's not a fallback
+      // Only add deviceId if it's not a fallback or phone device
       if (
         cameraConfig.device_id &&
-        !cameraConfig.device_id.startsWith("fallback_")
+        !cameraConfig.device_id.startsWith("fallback_") &&
+        !cameraConfig.device_id.startsWith("phone_")
       ) {
         (constraints.video as MediaTrackConstraints).deviceId = {
           exact: cameraConfig.device_id, // Changed from 'ideal' to 'exact'
@@ -313,8 +497,11 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
       return;
     }
 
-    // Check if camera is already added
-    if (cameras.some((cam) => cam.camera_index === cameraIndex)) {
+    // Check if camera is already added (skip for phone cameras as they can be added multiple times)
+    if (
+      !selectedCamera.isPhone &&
+      cameras.some((cam) => cam.camera_index === cameraIndex)
+    ) {
       toast({
         title: "Camera Already Added",
         description: "This camera is already in the configuration.",
@@ -323,29 +510,43 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
       return;
     }
 
+    // Generate unique session ID for phone cameras
+    const sessionId = selectedCamera.isPhone
+      ? `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      : undefined;
+
     const newCamera: CameraConfig = {
-      id: `camera_${Date.now()}`,
+      id: `camera_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: cameraName.trim(),
-      type: "opencv",
-      camera_index: selectedCamera.index,
-      device_id: selectedCamera.deviceId,
+      type: selectedCamera.isPhone ? "phone" : "opencv",
+      camera_index: selectedCamera.isPhone ? undefined : selectedCamera.index,
+      device_id: selectedCamera.isPhone
+        ? `phone_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        : selectedCamera.deviceId,
       width: 640,
       height: 480,
       fps: 30,
+      session_id: sessionId,
     };
 
     console.log("🆕 Creating new camera config:", {
       name: newCamera.name,
+      type: newCamera.type,
       camera_index: newCamera.camera_index,
       device_id: newCamera.device_id,
       selectedCamera: selectedCamera,
+      isPhone: selectedCamera.isPhone,
     });
 
     const updatedCameras = [...cameras, newCamera];
     onCamerasChange(updatedCameras);
 
-    // Start preview for the new camera
-    await startCameraPreview(newCamera);
+    // For phone cameras, create WebRTC session instead of preview
+    if (selectedCamera.isPhone) {
+      createPhoneSession(newCamera);
+    } else {
+      await startCameraPreview(newCamera);
+    }
 
     // Reset form
     setSelectedCameraIndex("");
@@ -408,6 +609,33 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
         Camera Configuration
       </h3>
 
+      {/* Network Address Info */}
+      {!networkAddress.loading && (
+        <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-blue-400 font-medium">
+              📱 Phone Access URL:
+            </span>
+            <code className="bg-gray-800 px-2 py-1 rounded text-blue-300">
+              {networkAddress.address}
+            </code>
+            {networkAddress.isLocalhost && networkAddress.localNetworkIP && (
+              <span className="text-green-400 text-xs">
+                (Network IP detected)
+              </span>
+            )}
+            {networkAddress.isLocalhost && !networkAddress.localNetworkIP && (
+              <span className="text-orange-400 text-xs">(Using localhost)</span>
+            )}
+          </div>
+          {networkAddress.error && (
+            <div className="text-orange-400 text-xs mt-1">
+              Note: {networkAddress.error}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add Camera Section */}
       <div className="bg-gray-800/50 rounded-lg p-4 space-y-4">
         <h4 className="text-md font-medium text-gray-300">Add Camera</h4>
@@ -432,17 +660,29 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
               <SelectContent className="bg-gray-800 border-gray-700">
                 {availableCameras.map((camera) => (
                   <SelectItem
-                    key={camera.index}
+                    key={
+                      camera.isPhone ? `phone-${camera.index}` : camera.index
+                    }
                     value={camera.index.toString()}
                     className="text-white hover:bg-gray-700"
                     disabled={
                       !camera.available ||
-                      cameras.some((cam) => cam.camera_index === camera.index)
+                      (!camera.isPhone &&
+                        cameras.some(
+                          (cam) => cam.camera_index === camera.index
+                        ))
                     }
                   >
-                    {camera.name} (Index {camera.index})
-                    {cameras.some((cam) => cam.camera_index === camera.index) &&
-                      " (Already added)"}
+                    {camera.isPhone ? (
+                      <>📱 {camera.name} (Remote Camera)</>
+                    ) : (
+                      <>
+                        {camera.name} (Index {camera.index})
+                        {cameras.some(
+                          (cam) => cam.camera_index === camera.index
+                        ) && " (Already added)"}
+                      </>
+                    )}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -487,6 +727,7 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
                 key={camera.id}
                 camera={camera}
                 stream={cameraStreams.get(camera.id)}
+                phoneStream={phoneStreams.get(camera.device_id)}
                 onRemove={() => removeCamera(camera.id)}
                 onUpdate={(updates) => updateCamera(camera.id, updates)}
                 onStartPreview={() => startCameraPreview(camera)}
@@ -509,6 +750,7 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
 interface CameraPreviewProps {
   camera: CameraConfig;
   stream?: MediaStream;
+  phoneStream?: PhoneStreamData;
   onRemove: () => void;
   onUpdate: (updates: Partial<CameraConfig>) => void;
   onStartPreview: () => void;
@@ -517,12 +759,25 @@ interface CameraPreviewProps {
 const CameraPreview: React.FC<CameraPreviewProps> = ({
   camera,
   stream,
+  phoneStream,
   onRemove,
   onUpdate,
   onStartPreview,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPreviewActive, setIsPreviewActive] = useState(false);
+  const networkAddress = useNetworkAddress();
+
+  // Generate QR code URL for phone cameras
+  const generatePhoneUrl = (camera: CameraConfig) => {
+    if (camera.type !== "phone" || !camera.session_id) return "";
+
+    const baseUrl =
+      networkAddress.address ||
+      `${window.location.protocol}//${window.location.host}`;
+    const webrtcId = camera.device_id;
+    return `${baseUrl}/remote_cam/${camera.session_id}?webrtcId=${webrtcId}`;
+  };
 
   // Debug logging for props
   console.log("CameraPreview render for:", camera.name, {
@@ -572,19 +827,73 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
   }, [stream, camera.name]);
 
   useEffect(() => {
-    // Auto-start preview when camera is added
-    if (!stream && !isPreviewActive) {
+    // Auto-start preview when camera is added (but not for phone cameras)
+    if (!stream && !isPreviewActive && camera.type !== "phone") {
       console.log("Auto-starting preview for camera:", camera.name);
       onStartPreview();
     }
-  }, [stream, isPreviewActive, onStartPreview, camera.name]);
+  }, [stream, isPreviewActive, onStartPreview, camera.name, camera.type]);
 
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
       {/* Camera Preview */}
       <div className="aspect-[4/3] bg-gray-800 relative">
-        {/* Always show the video element if we have a stream, regardless of isPreviewActive */}
-        {stream ? (
+        {camera.type === "phone" ? (
+          /* Phone Camera - Show Stream if Active, Otherwise QR Code */
+          <div className="w-full h-full relative bg-gradient-to-br from-blue-900/20 to-purple-900/20">
+            {phoneStream && phoneStream.isActive ? (
+              /* Live Phone Stream */
+              <>
+                <img
+                  src={phoneStream.frameData}
+                  alt="Phone Camera Stream"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-2 left-2">
+                  <div className="flex items-center gap-1 bg-black/60 px-2 py-1 rounded text-xs">
+                    <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-green-400">LIVE</span>
+                  </div>
+                </div>
+                <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded text-xs">
+                  📱 Phone Stream
+                </div>
+              </>
+            ) : (
+              /* QR Code Display */
+              <div className="w-full h-full flex flex-col items-center justify-center p-4">
+                {camera.session_id ? (
+                  <QRCodeDisplay
+                    url={generatePhoneUrl(camera)}
+                    size={140}
+                    title="Scan with Phone"
+                    showControls={false}
+                    showUrl={false}
+                    className="scale-90"
+                  />
+                ) : (
+                  <div className="text-center">
+                    <Smartphone className="w-12 h-12 text-blue-400 mb-3 mx-auto" />
+                    <span className="text-blue-400 text-sm font-medium">
+                      Phone Camera
+                    </span>
+                    <span className="text-gray-400 text-xs mt-1 block">
+                      Generating QR code...
+                    </span>
+                  </div>
+                )}
+
+                <div className="absolute top-2 left-2">
+                  <div className="flex items-center gap-1 bg-black/50 px-2 py-1 rounded text-xs">
+                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div>
+                    <span className="text-blue-400">WAITING</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : stream ? (
+          /* Regular Camera Stream */
           <>
             <video
               ref={videoRef}
@@ -611,6 +920,7 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
             </div>
           </>
         ) : (
+          /* No Stream Available */
           <div className="w-full h-full flex flex-col items-center justify-center">
             <VideoOff className="w-8 h-8 text-gray-500 mb-2" />
             <span className="text-gray-500 text-sm">Preview not available</span>
@@ -683,8 +993,23 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
         </div>
 
         <div className="text-xs text-gray-500">
-          Type: {camera.type} | Device: {camera.device_id?.substring(0, 10)}...
+          Type: {camera.type} |{" "}
+          {camera.type === "phone" && camera.session_id ? (
+            <>Session: {camera.session_id.substring(0, 12)}...</>
+          ) : (
+            <>Device: {camera.device_id?.substring(0, 10)}...</>
+          )}
         </div>
+
+        {/* Phone Camera URL Display */}
+        {camera.type === "phone" && camera.session_id && (
+          <div className="mt-2 p-2 bg-gray-800 rounded text-xs">
+            <span className="text-gray-400">Phone URL:</span>
+            <div className="text-blue-400 font-mono text-xs break-all mt-1">
+              {generatePhoneUrl(camera)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
