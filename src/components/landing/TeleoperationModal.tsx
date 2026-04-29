@@ -19,6 +19,9 @@ import {
 import { Settings } from "lucide-react";
 import PortDetectionModal from "@/components/ui/PortDetectionModal";
 import PortDetectionButton from "@/components/ui/PortDetectionButton";
+import WebRTCCameraConfiguration, {
+  CameraConfig,
+} from "@/components/webrtc/WebRTCCameraConfiguration";
 import { useApi } from "@/contexts/ApiContext";
 import { useAutoSave } from "@/hooks/useAutoSave";
 
@@ -35,6 +38,8 @@ interface TeleoperationModalProps {
   setFollowerConfig: (value: string) => void;
   leaderConfigs: string[];
   followerConfigs: string[];
+  cameras: CameraConfig[];
+  setCameras: (cameras: CameraConfig[]) => void;
   isLoadingConfigs: boolean;
   onStart: () => void;
 }
@@ -52,6 +57,8 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
   setFollowerConfig,
   leaderConfigs,
   followerConfigs,
+  cameras,
+  setCameras,
   isLoadingConfigs,
   onStart,
 }) => {
@@ -61,6 +68,46 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
   const [detectionRobotType, setDetectionRobotType] = useState<
     "leader" | "follower"
   >("leader");
+
+  const handlePortDetection = (robotType: "leader" | "follower") => {
+    setDetectionRobotType(robotType);
+    setShowPortDetection(true);
+  };
+
+  const handlePortDetected = (port: string) => {
+    if (detectionRobotType === "leader") {
+      setLeaderPort(port);
+    } else {
+      setFollowerPort(port);
+    }
+  };
+
+  // Enhanced port change handlers that save automatically
+  const handleLeaderPortChange = (value: string) => {
+    setLeaderPort(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSavePort("leader", value);
+  };
+
+  const handleFollowerPortChange = (value: string) => {
+    setFollowerPort(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSavePort("follower", value);
+  };
+
+  // Enhanced config change handlers that save automatically
+  const handleLeaderConfigChange = (value: string) => {
+    setLeaderConfig(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSaveConfig("leader", value);
+  };
+
+  const handleFollowerConfigChange = (value: string) => {
+    setFollowerConfig(value);
+    // Auto-save with debouncing to avoid excessive API calls
+    debouncedSaveConfig("follower", value);
+  };
+
 
   // Load saved ports and configurations on component mount
   useEffect(() => {
@@ -101,6 +148,7 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
         if (followerConfigData.status === "success" && followerConfigData.default_config) {
           setFollowerConfig(followerConfigData.default_config);
         }
+
       } catch (error) {
         console.error("Error loading saved data:", error);
       }
@@ -111,47 +159,9 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
     }
   }, [open, setLeaderPort, setFollowerPort, setLeaderConfig, setFollowerConfig, leaderConfigs, followerConfigs, baseUrl, fetchWithHeaders]);
 
-  const handlePortDetection = (robotType: "leader" | "follower") => {
-    setDetectionRobotType(robotType);
-    setShowPortDetection(true);
-  };
-
-  const handlePortDetected = (port: string) => {
-    if (detectionRobotType === "leader") {
-      setLeaderPort(port);
-    } else {
-      setFollowerPort(port);
-    }
-  };
-
-  // Enhanced port change handlers that save automatically
-  const handleLeaderPortChange = (value: string) => {
-    setLeaderPort(value);
-    // Auto-save with debouncing to avoid excessive API calls
-    debouncedSavePort("leader", value);
-  };
-
-  const handleFollowerPortChange = (value: string) => {
-    setFollowerPort(value);
-    // Auto-save with debouncing to avoid excessive API calls
-    debouncedSavePort("follower", value);
-  };
-
-  // Enhanced config change handlers that save automatically
-  const handleLeaderConfigChange = (value: string) => {
-    setLeaderConfig(value);
-    // Auto-save with debouncing to avoid excessive API calls
-    debouncedSaveConfig("leader", value);
-  };
-
-  const handleFollowerConfigChange = (value: string) => {
-    setFollowerConfig(value);
-    // Auto-save with debouncing to avoid excessive API calls
-    debouncedSaveConfig("follower", value);
-  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[600px] p-8">
+      <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[600px] max-h-[90vh] overflow-y-auto p-8">
         <DialogHeader>
           <div className="flex justify-center items-center gap-4 mb-4">
             <Settings className="w-8 h-8 text-yellow-500" />
@@ -274,6 +284,14 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
             </div>
           </div>
 
+          <div className="border-t border-gray-700 pt-6">
+            <WebRTCCameraConfiguration
+              cameras={cameras}
+              onCamerasChange={setCameras}
+              loadSavedCameras={true}
+            />
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
             <Button
               onClick={onStart}
@@ -299,6 +317,7 @@ const TeleoperationModal: React.FC<TeleoperationModalProps> = ({
         robotType={detectionRobotType}
         onPortDetected={handlePortDetected}
       />
+
     </Dialog>
   );
 };

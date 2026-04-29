@@ -16,13 +16,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-
 import PortDetectionModal from "@/components/ui/PortDetectionModal";
 import PortDetectionButton from "@/components/ui/PortDetectionButton";
-
-import CameraConfiguration, {
+import WebRTCCameraConfiguration, {
   CameraConfig,
-} from "@/components/recording/CameraConfiguration";
+} from "@/components/webrtc/WebRTCCameraConfiguration";
 import { useApi } from "@/contexts/ApiContext";
 import { useAutoSave } from "@/hooks/useAutoSave";
 interface RecordingModalProps {
@@ -143,31 +141,22 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
 
         // Load leader configuration
         const leaderConfigResponse = await fetchWithHeaders(
-          `${baseUrl}/robot-config/leader?available_configs=${leaderConfigs.join(
-            ","
-          )}`
+          `${baseUrl}/robot-config/leader?available_configs=${leaderConfigs.join(',')}`
         );
         const leaderConfigData = await leaderConfigResponse.json();
-        if (
-          leaderConfigData.status === "success" &&
-          leaderConfigData.default_config
-        ) {
+        if (leaderConfigData.status === "success" && leaderConfigData.default_config) {
           setLeaderConfig(leaderConfigData.default_config);
         }
 
         // Load follower configuration
         const followerConfigResponse = await fetchWithHeaders(
-          `${baseUrl}/robot-config/follower?available_configs=${followerConfigs.join(
-            ","
-          )}`
+          `${baseUrl}/robot-config/follower?available_configs=${followerConfigs.join(',')}`
         );
         const followerConfigData = await followerConfigResponse.json();
-        if (
-          followerConfigData.status === "success" &&
-          followerConfigData.default_config
-        ) {
+        if (followerConfigData.status === "success" && followerConfigData.default_config) {
           setFollowerConfig(followerConfigData.default_config);
         }
+
       } catch (error) {
         console.error("Error loading saved data:", error);
       }
@@ -176,17 +165,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
     if (open && leaderConfigs.length > 0 && followerConfigs.length > 0) {
       loadSavedData();
     }
-  }, [
-    open,
-    setLeaderPort,
-    setFollowerPort,
-    setLeaderConfig,
-    setFollowerConfig,
-    leaderConfigs,
-    followerConfigs,
-    baseUrl,
-    fetchWithHeaders,
-  ]);
+  }, [open, setLeaderPort, setFollowerPort, setLeaderConfig, setFollowerConfig, leaderConfigs, followerConfigs, baseUrl, fetchWithHeaders]);
 
   return (
     <>
@@ -207,6 +186,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
               Configure the robot arm settings and dataset parameters for
               recording.
             </DialogDescription>
+
 
             <div className="grid grid-cols-1 gap-6">
               <div className="space-y-4">
@@ -279,9 +259,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                       <Input
                         id="recordFollowerPort"
                         value={followerPort}
-                        onChange={(e) =>
-                          handleFollowerPortChange(e.target.value)
-                        }
+                        onChange={(e) => handleFollowerPortChange(e.target.value)}
                         placeholder="/dev/tty.usbmodem5A460816621"
                         className="bg-gray-800 border-gray-700 text-white flex-1"
                       />
@@ -325,6 +303,16 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                     </Select>
                   </div>
                 </div>
+              </div>
+
+              {/* Camera Configuration Section */}
+              <div className="space-y-4">
+                <WebRTCCameraConfiguration
+                  cameras={cameras}
+                  onCamerasChange={setCameras}
+                  releaseStreamsRef={releaseStreamsRef}
+                  loadSavedCameras={true}
+                />
               </div>
 
               <div className="space-y-4">
@@ -381,14 +369,6 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                   </div>
                 </div>
               </div>
-
-              <div className="space-y-4">
-                <CameraConfiguration
-                  cameras={cameras}
-                  onCamerasChange={setCameras}
-                  releaseStreamsRef={releaseStreamsRef}
-                />
-              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
@@ -417,6 +397,8 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
         robotType={detectionRobotType}
         onPortDetected={handlePortDetected}
       />
+
+
     </>
   );
 };

@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import VisualizerPanel from "@/components/control/VisualizerPanel";
+import WebRTCVisualizerPanel from "@/components/webrtc/WebRTCVisualizerPanel";
 import { useToast } from "@/hooks/use-toast";
 import { useApi } from "@/contexts/ApiContext";
 
@@ -53,9 +53,9 @@ const TeleoperationPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-2 sm:p-4">
-      <div className="w-full h-[95vh] flex">
-        <VisualizerPanel onGoBack={handleGoBack} className="lg:w-full" />
+    <div className="min-h-screen bg-black flex items-start justify-center p-2 sm:p-4">
+      <div className="w-full min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)] flex">
+        <WebRTCVisualizerPanel onGoBack={handleGoBack} className="lg:w-full" />
       </div>
     </div>
   );

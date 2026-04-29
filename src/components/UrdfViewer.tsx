@@ -45,7 +45,7 @@ const UrdfViewer: React.FC = () => {
   // Real-time joint updates via WebSocket
   const { isConnected: isWebSocketConnected } = useRealTimeJoints({
     viewerRef,
-    enabled: isDefaultModel, // Only enable WebSocket for default model
+    enabled: true, // Always enable WebSocket for real-time robot data
   });
 
   // Add state for custom URDF path

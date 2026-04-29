@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Camera, Plus, X, Video, VideoOff } from "lucide-react";
+import { Camera, Plus, X, Video, VideoOff, RefreshCw } from "lucide-react";
 import { useApi } from "@/contexts/ApiContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -28,6 +28,7 @@ interface CameraConfigurationProps {
   cameras: CameraConfig[];
   onCamerasChange: (cameras: CameraConfig[]) => void;
   releaseStreamsRef?: React.MutableRefObject<(() => void) | null>; // Ref to expose stream release function
+  loadSavedCameras?: boolean; // If true, load saved cameras on mount
 }
 
 interface AvailableCamera {
@@ -35,60 +36,119 @@ interface AvailableCamera {
   deviceId: string;
   name: string;
   available: boolean;
+  preview_image?: string; // Base64 preview from backend
 }
 
 const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
   cameras,
   onCamerasChange,
   releaseStreamsRef,
+  loadSavedCameras = true,
 }) => {
   const { baseUrl, fetchWithHeaders } = useApi();
   const { toast } = useToast();
 
-  const [availableCameras, setAvailableCameras] = useState<AvailableCamera[]>(
-    []
-  );
+  const [availableCameras, setAvailableCameras] = useState<AvailableCamera[]>([]);
   const [selectedCameraIndex, setSelectedCameraIndex] = useState<string>("");
   const [cameraName, setCameraName] = useState("");
   const [isLoadingCameras, setIsLoadingCameras] = useState(false);
-  const [cameraStreams, setCameraStreams] = useState<Map<string, MediaStream>>(
-    new Map()
-  );
+  const [hasDetectedOnMount, setHasDetectedOnMount] = useState(false);
+  const [hasLoadedSavedCameras, setHasLoadedSavedCameras] = useState(false);
+  const [cameraStreams, setCameraStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [savedCameraConfigs, setSavedCameraConfigs] = useState<{[key: string]: any}>({});
 
-  // Fetch available cameras on component mount
+  // Load saved camera configurations on mount
   useEffect(() => {
-    fetchAvailableCameras();
-  }, []);
+    if (loadSavedCameras) {
+      setHasLoadedSavedCameras(false);
+      setHasDetectedOnMount(false);
+      loadSavedCameraConfigs();
+    }
+  }, [loadSavedCameras]);
+
+  // Auto-detect cameras on component mount, but only if no saved cameras were loaded and haven't detected yet
+  useEffect(() => {
+    if (!hasDetectedOnMount && hasLoadedSavedCameras && cameras.length === 0 && loadSavedCameras) {
+      console.log("🔍 No saved cameras found, starting auto-detection...");
+      fetchAvailableCameras();
+      setHasDetectedOnMount(true);
+    }
+  }, [hasDetectedOnMount, hasLoadedSavedCameras, cameras.length, loadSavedCameras]);
+
+  const loadSavedCameraConfigs = async () => {
+    try {
+      console.log("🔄 Loading saved camera configurations from backend...");
+      const response = await fetchWithHeaders(`${baseUrl}/cameras/config`);
+      const data = await response.json();
+      
+      console.log("📡 Backend response:", data);
+      
+      if (data.status === "success" && data.camera_config && data.camera_config.cameras) {
+        const camerasFromBackend = data.camera_config.cameras;
+        console.log("📦 Raw cameras from backend:", camerasFromBackend);
+        
+        setSavedCameraConfigs(camerasFromBackend);
+        
+        // Simple conversion - just use device_id
+        const savedCameras: CameraConfig[] = Object.entries(camerasFromBackend).map(([name, config]: [string, any]) => ({
+          id: `saved_${name}`,
+          name: name,
+          type: config.type || "browser", // Default to browser type
+          camera_index: config.index_or_path || 0, // Keep for reference
+          device_id: config.device_id, // Primary identifier
+          width: config.width || 640,
+          height: config.height || 480,
+          fps: config.fps || 30,
+        }));
+        
+        // Sort by name for consistent UI order (simple and predictable)
+        savedCameras.sort((a, b) => a.name.localeCompare(b.name));
+        
+        console.log("🎬 Converted cameras for frontend (sorted by camera_index):", savedCameras);
+        onCamerasChange(savedCameras);
+        
+        // Start previews for saved cameras in the correct order
+        console.log("🔄 Starting previews in this order:", savedCameras.map(cam => ({
+          name: cam.name,
+          camera_index: cam.camera_index,
+          id: cam.id
+        })));
+        
+        savedCameras.forEach((camera, index) => {
+          setTimeout(() => {
+            console.log(`🎥 Starting preview ${index} for ${camera.name} (camera_index: ${camera.camera_index})`);
+            startCameraPreview(camera);
+          }, index * 100); // Stagger the preview starts
+        });
+        
+        console.log("✅ Loaded saved camera configurations:", savedCameras);
+        console.log("🚫 Skipping auto-detection because saved cameras exist");
+      } else {
+        console.log("ℹ️ No saved camera configurations found");
+        onCamerasChange([]); // Ensure cameras array is empty
+      }
+    } catch (error) {
+      console.error("Error loading saved camera configs:", error);
+      onCamerasChange([]); // Ensure cameras array is empty on error
+    } finally {
+      setHasLoadedSavedCameras(true);
+    }
+  };
 
   const fetchAvailableCameras = async () => {
     console.log("🚀 fetchAvailableCameras() called");
     setIsLoadingCameras(true);
     try {
-      console.log(
-        "📡 Trying backend endpoint:",
-        `${baseUrl}/available-cameras`
-      );
-      const response = await fetchWithHeaders(`${baseUrl}/available-cameras`);
-      console.log("📡 Backend response status:", response.status, response.ok);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("📡 Backend camera data received:", data);
-        setAvailableCameras(data.cameras || []);
-
-        // Always also try browser detection to get device IDs
-        console.log("🔄 Also running browser detection for device IDs...");
-        await detectBrowserCameras();
-      } else {
-        console.log("📡 Backend failed, falling back to browser detection");
-        // Fallback to browser camera detection
-        await detectBrowserCameras();
-      }
-    } catch (error) {
-      console.error("📡 Error fetching cameras from backend:", error);
-      console.log("🔄 Falling back to browser detection due to error");
-      // Fallback to browser camera detection
+      // Use ONLY browser detection to avoid duplicates and device ID issues
+      console.log("🔍 Using pure browser detection for consistency...");
       await detectBrowserCameras();
+    } catch (error) {
+      console.error("📡 Error fetching cameras:", error);
+      toast({
+        title: "Camera Detection Failed",
+        description: "Could not detect available cameras. Please check permissions.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingCameras(false);
       console.log("✅ fetchAvailableCameras() completed");
@@ -100,47 +160,36 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
       // First, request camera permissions to get proper device IDs and labels
       console.log("🔐 Requesting camera permissions for device detection...");
       try {
-        const tempStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        });
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
         console.log("✅ Camera permission granted, stopping temp stream");
         tempStream.getTracks().forEach((track) => track.stop());
       } catch (permError) {
-        console.warn(
-          "⚠️ Camera permission denied, device IDs may be empty:",
-          permError
-        );
+        console.warn("⚠️ Camera permission denied, device IDs may be empty:", permError);
       }
 
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(
-        (device) => device.kind === "videoinput"
-      );
+      const videoDevices = devices.filter((device) => device.kind === "videoinput");
 
-      console.log(
-        "🔍 Raw video devices from enumerateDevices:",
-        videoDevices.map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label,
-          kind: d.kind,
-        }))
-      );
+      console.log("🔍 Raw video devices from enumerateDevices:", videoDevices.map((d) => ({
+        deviceId: d.deviceId,
+        label: d.label,
+        kind: d.kind,
+      })));
 
       const detectedCameras = videoDevices.map((device, index) => ({
         index,
-        deviceId: device.deviceId || `fallback_${index}`, // Fallback if deviceId is empty
+        deviceId: device.deviceId,
         name: device.label || `Camera ${index + 1}`,
         available: true,
       }));
 
-      console.log("🎬 Browser cameras with indices mapped:", detectedCameras);
+      console.log("🎬 Browser cameras detected:", detectedCameras);
       setAvailableCameras(detectedCameras);
     } catch (error) {
       console.error("Error detecting browser cameras:", error);
       toast({
         title: "Camera Detection Failed",
-        description:
-          "Could not detect available cameras. Please check permissions.",
+        description: "Could not detect available cameras. Please check permissions.",
         variant: "destructive",
       });
     }
@@ -148,16 +197,54 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
 
   const startCameraPreview = async (cameraConfig: CameraConfig) => {
     try {
-      console.log(
-        "🎥 Starting camera preview for:",
-        cameraConfig.name,
-        "with device_id:",
-        cameraConfig.device_id,
-        "camera_index:",
-        cameraConfig.camera_index
-      );
+      console.log("🎥 Starting camera preview for:", cameraConfig.name, "with device_id:", cameraConfig.device_id, "camera_index:", cameraConfig.camera_index);
 
-      // Create constraints with fallbacks to avoid OverconstrainedError
+      // For saved cameras, try to use the actual device_id if it doesn't start with "saved_"
+      if (cameraConfig.device_id.startsWith("saved_")) {
+        const savedName = cameraConfig.device_id.replace("saved_", "");
+        const savedConfig = savedCameraConfigs[savedName];
+        
+        // If we have a real device_id in the saved config, use it
+        if (savedConfig && savedConfig.device_id && !savedConfig.device_id.startsWith("saved_")) {
+          const constraints: MediaStreamConstraints = {
+            video: {
+              deviceId: { exact: savedConfig.device_id },
+              width: { ideal: cameraConfig.width, min: 320, max: 1920 },
+              height: { ideal: cameraConfig.height, min: 240, max: 1080 },
+              frameRate: { ideal: cameraConfig.fps || 30, min: 10, max: 60 },
+            },
+          };
+          console.log("🔧 Using saved deviceId for camera:", savedConfig.device_id);
+          
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          setCameraStreams((prev) => new Map(prev.set(cameraConfig.id, stream)));
+          return stream;
+        }
+        
+        // Fallback: try to find device by camera index
+        if (savedConfig && typeof savedConfig.index_or_path === "number") {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(d => d.kind === "videoinput");
+          
+          if (videoDevices[savedConfig.index_or_path]) {
+            const constraints: MediaStreamConstraints = {
+              video: {
+                deviceId: { exact: videoDevices[savedConfig.index_or_path].deviceId },
+                width: { ideal: cameraConfig.width, min: 320, max: 1920 },
+                height: { ideal: cameraConfig.height, min: 240, max: 1080 },
+                frameRate: { ideal: cameraConfig.fps || 30, min: 10, max: 60 },
+              },
+            };
+            console.log("🔧 Using deviceId by index for saved camera:", videoDevices[savedConfig.index_or_path].deviceId);
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            setCameraStreams((prev) => new Map(prev.set(cameraConfig.id, stream)));
+            return stream;
+          }
+        }
+      }
+
+      // For new cameras, use normal device ID
       const constraints: MediaStreamConstraints = {
         video: {
           width: { ideal: cameraConfig.width, min: 320, max: 1920 },
@@ -166,26 +253,20 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
         },
       };
 
-      // Only add deviceId if it's not a fallback
-      if (
-        cameraConfig.device_id &&
-        !cameraConfig.device_id.startsWith("fallback_")
-      ) {
+      // Only add deviceId if it's not a fallback or backend prefixed
+      if (cameraConfig.device_id && 
+          !cameraConfig.device_id.startsWith("fallback_") && 
+          !cameraConfig.device_id.startsWith("backend_") &&
+          !cameraConfig.device_id.startsWith("saved_")) {
         (constraints.video as MediaTrackConstraints).deviceId = {
-          exact: cameraConfig.device_id, // Changed from 'ideal' to 'exact'
+          exact: cameraConfig.device_id,
         };
-        console.log(
-          "🔧 Using EXACT deviceId constraint:",
-          cameraConfig.device_id
-        );
+        console.log("🔧 Using EXACT deviceId constraint:", cameraConfig.device_id);
       } else {
         console.log("⚠️ No valid deviceId, will use default camera");
       }
 
-      console.log(
-        "📋 Final constraints:",
-        JSON.stringify(constraints, null, 2)
-      );
+      console.log("📋 Final constraints:", JSON.stringify(constraints, null, 2));
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
@@ -199,33 +280,9 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
           width: settings.width,
           height: settings.height,
         });
-
-        // Check if we got the camera we requested
-        if (
-          cameraConfig.device_id &&
-          settings.deviceId !== cameraConfig.device_id
-        ) {
-          console.warn(
-            "⚠️ CAMERA MISMATCH! Requested:",
-            cameraConfig.device_id,
-            "Got:",
-            settings.deviceId
-          );
-        } else {
-          console.log("✅ Camera match confirmed!");
-        }
       }
 
-      console.log(
-        "Camera stream created successfully for:",
-        cameraConfig.name,
-        {
-          streamId: stream.id,
-          tracks: stream.getTracks().length,
-          videoTracks: stream.getVideoTracks().length,
-          active: stream.active,
-        }
-      );
+      console.log("Camera stream created successfully for:", cameraConfig.name);
 
       setCameraStreams((prev) => {
         const newMap = new Map(prev.set(cameraConfig.id, stream));
@@ -245,19 +302,14 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
       const errorMessage = isMediaError ? error.message : "Unknown error";
 
       // If constraints failed, try with basic constraints
-      if (
-        errorName === "OverconstrainedError" ||
-        errorName === "NotReadableError"
-      ) {
+      if (errorName === "OverconstrainedError" || errorName === "NotReadableError") {
         try {
           console.log("Retrying with basic constraints...");
           const basicStream = await navigator.mediaDevices.getUserMedia({
             video: { width: 640, height: 480 },
           });
 
-          setCameraStreams(
-            (prev) => new Map(prev.set(cameraConfig.id, basicStream))
-          );
+          setCameraStreams((prev) => new Map(prev.set(cameraConfig.id, basicStream)));
           toast({
             title: "Camera Preview Started",
             description: `${cameraConfig.name} started with basic settings due to constraint issues.`,
@@ -289,6 +341,48 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
     }
   };
 
+  // Function to find the actual system camera index for a given device ID
+  const findSystemIndexForDeviceId = async (deviceId: string): Promise<number> => {
+    try {
+      console.log("🔍 Finding system index for device ID:", deviceId);
+      
+      // Get all video devices and find the index of our device
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === "videoinput");
+      
+      console.log("📋 All video devices found:", videoDevices.map((d, i) => ({
+        index: i,
+        deviceId: d.deviceId,
+        label: d.label
+      })));
+      
+      const deviceIndex = videoDevices.findIndex(device => device.deviceId === deviceId);
+      
+      if (deviceIndex !== -1) {
+        console.log(`✅ Device ID ${deviceId} mapped to system index ${deviceIndex}`);
+        
+        // Test that this mapping is correct by trying to open the camera
+        try {
+          const testStream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: deviceId } }
+          });
+          testStream.getTracks().forEach(track => track.stop());
+          console.log(`✅ Verified: Device ID ${deviceId} works at index ${deviceIndex}`);
+        } catch (testError) {
+          console.warn(`⚠️ Device ID ${deviceId} failed verification:`, testError);
+        }
+        
+        return deviceIndex;
+      }
+      
+      console.warn(`⚠️ Could not find system index for device ID: ${deviceId}`);
+      return -1;
+    } catch (error) {
+      console.error("Error finding system index for device ID:", error);
+      return -1;
+    }
+  };
+
   const addCamera = async () => {
     if (!selectedCameraIndex || !cameraName.trim()) {
       toast({
@@ -300,9 +394,7 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
     }
 
     const cameraIndex = parseInt(selectedCameraIndex);
-    const selectedCamera = availableCameras.find(
-      (cam) => cam.index === cameraIndex
-    );
+    const selectedCamera = availableCameras.find((cam) => cam.index === cameraIndex);
 
     if (!selectedCamera) {
       toast({
@@ -323,12 +415,15 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
       return;
     }
 
+    // Map device_id to actual system index for backend compatibility
+    const systemIndex = await findSystemIndexForDeviceId(selectedCamera.deviceId);
+    
     const newCamera: CameraConfig = {
       id: `camera_${Date.now()}`,
-      name: cameraName.trim(),
-      type: "opencv",
-      camera_index: selectedCamera.index,
-      device_id: selectedCamera.deviceId,
+      name: cameraName.trim(), // Simple user name
+      type: "browser", // Use browser type
+      camera_index: systemIndex !== -1 ? systemIndex : selectedCamera.index, // Use mapped system index
+      device_id: selectedCamera.deviceId, // Keep device_id for frontend preview
       width: 640,
       height: 480,
       fps: 30,
@@ -338,8 +433,68 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
       name: newCamera.name,
       camera_index: newCamera.camera_index,
       device_id: newCamera.device_id,
+      systemIndex: systemIndex,
       selectedCamera: selectedCamera,
     });
+
+    // Save camera configuration to backend
+    try {
+      const configResponse = await fetchWithHeaders(`${baseUrl}/cameras/create-config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          camera_info: {
+            id: newCamera.camera_index,
+            name: newCamera.name,
+            type: newCamera.type,
+          },
+          custom_settings: {
+            width: newCamera.width,
+            height: newCamera.height,
+            fps: newCamera.fps,
+            device_id: newCamera.device_id, // Only device_id, no complex mapping
+          }
+        }),
+      });
+
+      const configResult = await configResponse.json();
+      
+      if (configResult.status === "success") {
+        // Simple config with just device_id
+        const configWithDeviceId = {
+          ...configResult.camera_config,
+          device_id: newCamera.device_id,
+          type: "browser" // Mark as browser type for streaming
+        };
+        
+        // Save to camera config
+        const saveResponse = await fetchWithHeaders(`${baseUrl}/cameras/config/update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            camera_name: newCamera.name,
+            camera_config: configWithDeviceId
+          }),
+        });
+
+        const saveResult = await saveResponse.json();
+        
+        if (saveResult.status === "success") {
+          console.log("Camera configuration saved successfully with device_id:", newCamera.device_id);
+          
+          // Update local saved configs
+          setSavedCameraConfigs(prev => ({
+            ...prev,
+            [newCamera.name]: configWithDeviceId
+          }));
+        } else {
+          console.error("Error saving camera config:", saveResult.message);
+        }
+      }
+    } catch (error) {
+      console.error("Error saving camera configuration:", error);
+      // Continue even if save fails
+    }
 
     const updatedCameras = [...cameras, newCamera];
     onCamerasChange(updatedCameras);
@@ -357,7 +512,41 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
     });
   };
 
-  const removeCamera = (cameraId: string) => {
+  const removeCamera = async (cameraId: string) => {
+    const camera = cameras.find(cam => cam.id === cameraId);
+    
+    if (camera) {
+      // Remove from backend - check if camera exists in saved configs
+      if (camera.device_id.startsWith("saved_") || savedCameraConfigs[camera.name]) {
+        try {
+          console.log(`Removing camera "${camera.name}" from backend...`);
+          const response = await fetchWithHeaders(`${baseUrl}/cameras/config/${encodeURIComponent(camera.name)}`, {
+            method: "DELETE",
+          });
+          
+          const result = await response.json();
+          
+          if (result.status === "success") {
+            console.log(`✅ Camera "${camera.name}" removed from backend successfully`);
+            
+            // Update local saved configs
+            setSavedCameraConfigs(prev => {
+              const newConfig = { ...prev };
+              delete newConfig[camera.name];
+              console.log("🗑️ Updated local saved configs after removal:", newConfig);
+              return newConfig;
+            });
+          } else {
+            console.error("❌ Error removing camera from backend:", result.message);
+          }
+        } catch (error) {
+          console.error("Error removing camera from backend:", error);
+        }
+      } else {
+        console.log(`Camera "${camera.name}" is not saved in backend, removing only from local state`);
+      }
+    }
+    
     stopCameraPreview(cameraId);
     const updatedCameras = cameras.filter((cam) => cam.id !== cameraId);
     onCamerasChange(updatedCameras);
@@ -404,75 +593,161 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-white border-b border-gray-700 pb-2">
-        Camera Configuration
-      </h3>
-
-      {/* Add Camera Section */}
-      <div className="bg-gray-800/50 rounded-lg p-4 space-y-4">
-        <h4 className="text-md font-medium text-gray-300">Add Camera</h4>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-300">
-              Available Cameras
-            </Label>
-            <Select
-              value={selectedCameraIndex}
-              onValueChange={setSelectedCameraIndex}
-              disabled={isLoadingCameras}
-            >
-              <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                <SelectValue
-                  placeholder={
-                    isLoadingCameras ? "Loading cameras..." : "Select camera"
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-white border-b border-gray-700 pb-2">
+          Camera Configuration
+        </h3>
+        <div className="flex gap-2">
+          <Button
+            onClick={fetchAvailableCameras}
+            disabled={isLoadingCameras}
+            size="sm"
+            variant="outline"
+            className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white"
+          >
+            {isLoadingCameras ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Detecting...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh Cameras
+              </>
+            )}
+          </Button>
+          
+          <Button
+            onClick={async () => {
+              try {
+                console.log("🔍 DEBUG: Testing camera mapping...");
+                
+                // Request permissions first
+                try {
+                  const permStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                  permStream.getTracks().forEach(track => track.stop());
+                  console.log("✅ Camera permissions granted");
+                } catch (permError) {
+                  console.error("❌ Camera permissions denied:", permError);
+                  toast({
+                    title: "Debug Failed",
+                    description: "Camera permissions required for debug",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === "videoinput");
+                console.log("📋 All video devices:", videoDevices.map((d, i) => ({
+                  index: i,
+                  deviceId: d.deviceId,
+                  label: d.label
+                })));
+                
+                // Test each device
+                for (let i = 0; i < videoDevices.length; i++) {
+                  try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                      video: { deviceId: { exact: videoDevices[i].deviceId } }
+                    });
+                    console.log(`✅ Index ${i} (${videoDevices[i].label}) - Device ID: ${videoDevices[i].deviceId}`);
+                    stream.getTracks().forEach(track => track.stop());
+                  } catch (error) {
+                    console.log(`❌ Index ${i} (${videoDevices[i].label}) - FAILED:`, error);
                   }
-                />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-800 border-gray-700">
-                {availableCameras.map((camera) => (
-                  <SelectItem
-                    key={camera.index}
-                    value={camera.index.toString()}
-                    className="text-white hover:bg-gray-700"
-                    disabled={
-                      !camera.available ||
-                      cameras.some((cam) => cam.camera_index === camera.index)
-                    }
-                  >
-                    {camera.name} (Index {camera.index})
-                    {cameras.some((cam) => cam.camera_index === camera.index) &&
-                      " (Already added)"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-300">
-              Camera Name
-            </Label>
-            <Input
-              value={cameraName}
-              onChange={(e) => setCameraName(e.target.value)}
-              placeholder="e.g., workspace_cam"
-              className="bg-gray-800 border-gray-700 text-white"
-            />
-          </div>
-
-          <div className="space-y-2 flex flex-col justify-end">
-            <Button
-              onClick={addCamera}
-              className="bg-blue-500 hover:bg-blue-600 text-white"
-              disabled={!selectedCameraIndex || !cameraName.trim()}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Camera
-            </Button>
-          </div>
+                }
+                
+                toast({
+                  title: "Debug Complete",
+                  description: "Check console for camera mapping details",
+                });
+              } catch (error) {
+                console.error("Debug failed:", error);
+                toast({
+                  title: "Debug Failed",
+                  description: "Error during camera debug",
+                  variant: "destructive",
+                });
+              }
+            }}
+            size="sm"
+            variant="outline"
+            className="border-gray-600 text-gray-400 hover:bg-gray-600 hover:text-white"
+          >
+            Debug
+          </Button>
         </div>
       </div>
+
+      {/* Add Camera Section */}
+      {availableCameras.length > 0 && (
+        <div className="bg-gray-800/50 rounded-lg p-4 space-y-4">
+          <h4 className="text-md font-medium text-gray-300">Add Camera</h4>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-300">
+                Available Cameras
+              </Label>
+              <Select
+                value={selectedCameraIndex}
+                onValueChange={setSelectedCameraIndex}
+                disabled={isLoadingCameras}
+              >
+                <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                  <SelectValue
+                    placeholder={
+                      isLoadingCameras ? "Loading cameras..." : "Select camera"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  {availableCameras.map((camera) => (
+                    <SelectItem
+                      key={camera.index}
+                      value={camera.index.toString()}
+                      className="text-white hover:bg-gray-700"
+                      disabled={
+                        !camera.available ||
+                        cameras.some((cam) => cam.camera_index === camera.index)
+                      }
+                    >
+                      {camera.name} (Index {camera.index})
+                      {cameras.some((cam) => cam.camera_index === camera.index) &&
+                        " (Already added)"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-300">
+                Camera Name
+              </Label>
+              <Input
+                value={cameraName}
+                onChange={(e) => setCameraName(e.target.value)}
+                placeholder="e.g., workspace_cam"
+                className="bg-gray-800 border-gray-700 text-white"
+              />
+            </div>
+
+            <div className="space-y-2 flex flex-col justify-end">
+              <Button
+                onClick={addCamera}
+                className="bg-blue-500 hover:bg-blue-600 text-white"
+                disabled={!selectedCameraIndex || !cameraName.trim()}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Camera
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Configured Cameras */}
       {cameras.length > 0 && (
@@ -496,10 +771,11 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
         </div>
       )}
 
-      {cameras.length === 0 && (
+      {cameras.length === 0 && !isLoadingCameras && (
         <div className="text-center py-8 text-gray-500">
           <Camera className="w-12 h-12 mx-auto mb-4 text-gray-600" />
-          <p>No cameras configured. Add a camera to get started.</p>
+          <p>No cameras configured.</p>
+          <p className="text-sm">Click "Refresh Cameras" to detect available cameras and add them.</p>
         </div>
       )}
     </div>
@@ -524,21 +800,12 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPreviewActive, setIsPreviewActive] = useState(false);
 
-  // Debug logging for props
-  console.log("CameraPreview render for:", camera.name, {
-    hasStream: !!stream,
-    streamActive: stream?.active,
-    isPreviewActive,
-    streamId: stream?.id,
-  });
-
   useEffect(() => {
     const video = videoRef.current;
     if (video && stream) {
       console.log("Setting stream to video element for camera:", camera.name);
       video.srcObject = stream;
 
-      // Explicitly play the video to ensure it starts
       const playVideo = async () => {
         try {
           await video.play();
@@ -546,7 +813,6 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
           setIsPreviewActive(true);
         } catch (error) {
           console.error("Error playing video for camera:", camera.name, error);
-          // Try to play without audio in case autoplay is blocked
           video.muted = true;
           try {
             await video.play();
@@ -559,7 +825,6 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
         }
       };
 
-      // Wait for metadata to load before playing
       if (video.readyState >= 1) {
         playVideo();
       } else {
@@ -583,7 +848,6 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
     <div className="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
       {/* Camera Preview */}
       <div className="aspect-[4/3] bg-gray-800 relative">
-        {/* Always show the video element if we have a stream, regardless of isPreviewActive */}
         {stream ? (
           <>
             <video
@@ -592,14 +856,6 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
               muted
               playsInline
               className="w-full h-full object-cover"
-              onLoadedMetadata={() =>
-                console.log("Video metadata loaded for:", camera.name)
-              }
-              onPlay={() =>
-                console.log("Video started playing for:", camera.name)
-              }
-              onError={(e) => console.error("Video error for:", camera.name, e)}
-              onCanPlay={() => console.log("Video can play for:", camera.name)}
             />
             <div className="absolute top-2 left-2">
               <div className="flex items-center gap-1 bg-black/50 px-2 py-1 rounded text-xs">
@@ -629,7 +885,9 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
       {/* Camera Info */}
       <div className="p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <h5 className="font-medium text-white truncate">{camera.name}</h5>
+          <h5 className="font-medium text-white truncate">
+            {camera.name.split('_')[0]} {/* Show only the user-given name part */}
+          </h5>
           <Button
             onClick={onRemove}
             size="sm"
@@ -683,7 +941,7 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
         </div>
 
         <div className="text-xs text-gray-500">
-          Type: {camera.type} | Device: {camera.device_id?.substring(0, 10)}...
+          Type: {camera.type} | Index: {camera.camera_index}
         </div>
       </div>
     </div>

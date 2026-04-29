@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Square, SkipForward, RotateCcw, Play } from "lucide-react";
 import UrdfViewer from "@/components/UrdfViewer";
 import UrdfProcessorInitializer from "@/components/UrdfProcessorInitializer";
-
+import RecordingCameraPanel from "@/components/recording/RecordingCameraPanel";
 import { useApi } from "@/contexts/ApiContext";
 
 interface RecordingConfig {
@@ -57,9 +57,8 @@ const Recording = () => {
   );
   const [recordingSessionStarted, setRecordingSessionStarted] = useState(false);
 
-  // Local UI state for immediate user feedback
-  const [transitioningToReset, setTransitioningToReset] = useState(false);
-  const [transitioningToNext, setTransitioningToNext] = useState(false);
+  // QR Code and camera states (legacy - kept for potential future use)
+  const [showQrModal, setShowQrModal] = useState(false);
 
   // Redirect if no config provided
   useEffect(() => {
@@ -92,24 +91,7 @@ const Recording = () => {
           );
           if (response.ok) {
             const status = await response.json();
-            console.log(
-              `📊 Backend Status: ${status.current_phase} | Transition States: reset=${transitioningToReset}, next=${transitioningToNext}`
-            );
             setBackendStatus(status);
-
-            // 🎯 CLEAR TRANSITION STATES: Only clear when backend actually reaches the expected phase
-            if (status.current_phase === "resetting" && transitioningToReset) {
-              console.log(
-                "✅ Clearing transitioningToReset - backend reached resetting phase"
-              );
-              setTransitioningToReset(false);
-            }
-            if (status.current_phase === "recording" && transitioningToNext) {
-              console.log(
-                "✅ Clearing transitioningToNext - backend reached recording phase"
-              );
-              setTransitioningToNext(false);
-            }
 
             // If backend recording stopped and session ended, navigate to upload
             if (
@@ -144,14 +126,8 @@ const Recording = () => {
     return () => {
       if (statusInterval) clearInterval(statusInterval);
     };
-  }, [
-    recordingSessionStarted,
-    recordingConfig,
-    navigate,
-    toast,
-    transitioningToReset,
-    transitioningToNext,
-  ]);
+  }, [recordingSessionStarted, recordingConfig, navigate, toast]);
+
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -198,24 +174,6 @@ const Recording = () => {
   const handleExitEarly = async () => {
     if (!backendStatus?.available_controls.exit_early) return;
 
-    // 🎯 IMMEDIATE UI FEEDBACK: Show transition state before backend response
-    const currentPhase = backendStatus.current_phase;
-    if (currentPhase === "recording") {
-      console.log("🎯 Setting transitioningToReset = true");
-      setTransitioningToReset(true);
-      toast({
-        title: "Ending Episode Recording",
-        description: `Moving to reset phase for episode ${backendStatus.current_episode}...`,
-      });
-    } else if (currentPhase === "resetting") {
-      console.log("🎯 Setting transitioningToNext = true");
-      setTransitioningToNext(true);
-      toast({
-        title: "Reset Complete",
-        description: `Moving to next episode...`,
-      });
-    }
-
     try {
       const response = await fetchWithHeaders(
         `${baseUrl}/recording-exit-early`,
@@ -226,12 +184,19 @@ const Recording = () => {
       const data = await response.json();
 
       if (response.ok) {
-        // ✅ SUCCESS: Don't clear transition states here - let them persist until backend phase changes
-        // The transition states will be cleared when the backend status actually updates to the new phase
+        const currentPhase = backendStatus.current_phase;
+        if (currentPhase === "recording") {
+          toast({
+            title: "Episode Recording Ended",
+            description: `Episode ${backendStatus.current_episode} recording completed. Moving to reset phase.`,
+          });
+        } else if (currentPhase === "resetting") {
+          toast({
+            title: "Reset Complete",
+            description: `Moving to next episode...`,
+          });
+        }
       } else {
-        // Clear transition states on error
-        setTransitioningToReset(false);
-        setTransitioningToNext(false);
         toast({
           title: "Error",
           description: data.message,
@@ -239,9 +204,6 @@ const Recording = () => {
         });
       }
     } catch (error) {
-      // Clear transition states on error
-      setTransitioningToReset(false);
-      setTransitioningToNext(false);
       toast({
         title: "Connection Error",
         description: "Could not connect to the backend server.",
@@ -354,20 +316,12 @@ const Recording = () => {
   const sessionElapsedTime = backendStatus.session_elapsed_seconds || 0;
 
   const getPhaseTitle = () => {
-    // 🎯 IMMEDIATE FEEDBACK: Show transition titles
-    if (transitioningToReset) return "Transitioning to Reset";
-    if (transitioningToNext) return "Moving to Next Episode";
-
     if (currentPhase === "recording") return "Episode Recording Time";
     if (currentPhase === "resetting") return "Environment Reset Time";
     return "Phase Time";
   };
 
   const getStatusText = () => {
-    // 🎯 IMMEDIATE FEEDBACK: Show transition states
-    if (transitioningToReset) return "MOVING TO RESET PHASE";
-    if (transitioningToNext) return "MOVING TO NEXT EPISODE";
-
     if (currentPhase === "recording")
       return `RECORDING EPISODE ${currentEpisode}`;
     if (currentPhase === "resetting") return "RESET THE ENVIRONMENT";
@@ -376,10 +330,6 @@ const Recording = () => {
   };
 
   const getStatusColor = () => {
-    // 🎯 IMMEDIATE FEEDBACK: Show transition state colors
-    if (transitioningToReset) return "text-blue-400"; // Blue for transition
-    if (transitioningToNext) return "text-blue-400"; // Blue for transition
-
     if (currentPhase === "recording") return "text-red-400";
     if (currentPhase === "resetting") return "text-orange-400";
     if (currentPhase === "preparing") return "text-yellow-400";
@@ -387,10 +337,6 @@ const Recording = () => {
   };
 
   const getDotColor = () => {
-    // 🎯 IMMEDIATE FEEDBACK: Show transition state dots with animation
-    if (transitioningToReset) return "bg-blue-500 animate-pulse"; // Blue pulsing for transition
-    if (transitioningToNext) return "bg-blue-500 animate-pulse"; // Blue pulsing for transition
-
     if (currentPhase === "recording") return "bg-red-500 animate-pulse";
     if (currentPhase === "resetting") return "bg-orange-500 animate-pulse";
     if (currentPhase === "preparing") return "bg-yellow-500";
@@ -483,9 +429,9 @@ const Recording = () => {
         </div>
 
         {/* Status and Controls */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-          {/* Recording Status - takes up 3 columns */}
-          <div className="lg:col-span-3 bg-gray-900 rounded-lg p-6 border border-gray-700">
+        <div className="grid grid-cols-1 lg:grid-cols-1 gap-6 mb-8">
+          {/* Recording Status - full width */}
+          <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
             {/* Status header */}
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -508,23 +454,11 @@ const Recording = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Button
                   onClick={handleExitEarly}
-                  disabled={
-                    !backendStatus.available_controls.exit_early ||
-                    transitioningToReset
-                  }
+                  disabled={!backendStatus.available_controls.exit_early}
                   className="bg-green-500 hover:bg-green-600 text-white font-semibold py-4 text-lg disabled:opacity-50"
                 >
-                  {transitioningToReset ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      Moving to Reset...
-                    </>
-                  ) : (
-                    <>
-                      <SkipForward className="w-5 h-5 mr-2" />
-                      End Episode
-                    </>
-                  )}
+                  <SkipForward className="w-5 h-5 mr-2" />
+                  End Episode
                 </Button>
 
                 <Button
@@ -552,23 +486,11 @@ const Recording = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Button
                   onClick={handleExitEarly}
-                  disabled={
-                    !backendStatus.available_controls.exit_early ||
-                    transitioningToNext
-                  }
+                  disabled={!backendStatus.available_controls.exit_early}
                   className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-6 text-xl disabled:opacity-50"
                 >
-                  {transitioningToNext ? (
-                    <>
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-2"></div>
-                      Moving to Next Episode...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-6 h-6 mr-2" />
-                      Continue to Next Phase
-                    </>
-                  )}
+                  <Play className="w-6 h-6 mr-2" />
+                  Continue to Next Phase
                 </Button>
 
                 <Button
@@ -650,16 +572,30 @@ const Recording = () => {
               )}
             </div>
           </div>
+
         </div>
 
-        {/* URDF Viewer Section */}
-        <div className="bg-gray-900 rounded-lg p-6 border border-gray-700 mb-8">
-          <h2 className="text-xl font-semibold text-white mb-4">
-            Robot Visualizer
-          </h2>
-          <div className="h-96 bg-gray-800 rounded-lg overflow-hidden">
-            <UrdfViewer />
-            <UrdfProcessorInitializer />
+        {/* Robot Visualizer and Camera Section */}
+        <div className="flex flex-col lg:flex-row gap-6 mb-8">
+          {/* Robot Visualizer - flex-1 */}
+          <div className="bg-gray-900 rounded-lg p-6 border border-gray-700 flex-1">
+            <h2 className="text-xl font-semibold text-white mb-4">
+              Robot Visualizer
+            </h2>
+            <div className="h-96 bg-gray-800 rounded-lg overflow-hidden">
+              <UrdfViewer />
+              <UrdfProcessorInitializer />
+            </div>
+          </div>
+
+          {/* Camera Panel - fixed width like teleoperation */}
+          <div className="bg-gray-900 rounded-lg p-6 border border-gray-700 flex-shrink-0 lg:w-80">
+            <h2 className="text-xl font-semibold text-white mb-4">
+              Camera Visualizer
+            </h2>
+            <div className="h-96 overflow-hidden">
+              <RecordingCameraPanel />
+            </div>
           </div>
         </div>
       </div>
